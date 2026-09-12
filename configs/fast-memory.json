@@ -1,0 +1,12 @@
+{
+  "_comment": "理想化内存（大带宽、低延迟），用于隔离计算侧瓶颈",
+  "hwacha": {"n_lanes": 1, "build_vru": true},
+  "memory": {
+    "l2_banks": 8,
+    "l2_bytes_per_bank": 1048576,
+    "l2_hit_latency": 16,
+    "dram_latency": 60,
+    "dram_channels": 4,
+    "dram_bytes_per_cycle_per_channel": 32.0
+  }
+}

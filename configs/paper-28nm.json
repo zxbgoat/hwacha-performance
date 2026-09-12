@@ -1,0 +1,19 @@
+{
+  "_comment": "论文/技术报告 v3.8.1 的评估配置：单 lane、VRU 开启、4 bank × 256 KB L2、LPDDR3-933 双通道、1 GHz",
+  "hwacha": {
+    "n_lanes": 1,
+    "build_vru": true,
+    "conf_prec": false,
+    "freq_ghz": 1.0
+  },
+  "memory": {
+    "l2_banks": 4,
+    "l2_bytes_per_bank": 262144,
+    "l2_ways": 8,
+    "l2_hit_latency": 24,
+    "dram_latency": 110,
+    "dram_channels": 2,
+    "dram_bytes_per_cycle_per_channel": 3.73,
+    "l2_supports_amo": true
+  }
+}

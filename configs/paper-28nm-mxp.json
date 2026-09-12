@@ -1,0 +1,17 @@
+{
+  "_comment": "论文 HOV/MXP 配置：在 paper-28nm 基础上启用混合精度",
+  "hwacha": {
+    "n_lanes": 1,
+    "build_vru": true,
+    "conf_prec": true,
+    "freq_ghz": 1.0
+  },
+  "memory": {
+    "l2_banks": 4,
+    "l2_bytes_per_bank": 262144,
+    "l2_hit_latency": 24,
+    "dram_latency": 110,
+    "dram_channels": 2,
+    "dram_bytes_per_cycle_per_channel": 3.73
+  }
+}

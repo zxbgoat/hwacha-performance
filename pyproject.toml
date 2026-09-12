@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hwacha-perf"
+version = "0.1.0"
+description = "Strip-level performance model of the UC Berkeley Hwacha decoupled vector-fetch accelerator"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+hwacha-perf = "hwacha_perf.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["hwacha_perf*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
