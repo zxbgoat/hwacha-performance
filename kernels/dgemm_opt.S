@@ -1,6 +1,6 @@
 # @kernel dgemm_opt
 # @n 65536
-# @cfg v64=10 vp=0
+# @cfg v64=10 vp=1
 # @array B elem=8 n=16384
 # @va va1 = B
 # @va va3 = B offset=8192
@@ -11,6 +11,7 @@
 # C 的加载/存储每 K 步只做一次，这里省略（用 @keep 说明）。B 块 128 KB 驻留 L2，
 # va 越过数组末尾后回绕，表示同一 B 块被后续 C 分块复用。
 dgemm_vf:
+    vpset     vp0                # 至少需要一个谓词寄存器；未加谓词的指令隐式引用 vp0
     vld       vv8, va1
     vld       vv9, va3
     vfmadd.d  vv0, vv8, vs1, vv0

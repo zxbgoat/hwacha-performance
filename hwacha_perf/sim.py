@@ -276,6 +276,7 @@ class Lane:
         self.outstanding: list[int] = []       # 在途 beat 完成时刻（堆）
         self.resp_port = Timeline()
         self.tlb: OrderedDict[int, None] = OrderedDict()
+        self._port_credit = 0.0
         self.last_reason = 'empty'
         self.vmu_reason = 'idle'
 
@@ -328,36 +329,51 @@ class Lane:
         return True
 
     # ---- 调度 ----
+    @staticmethod
+    def _second_port_kind(ins) -> bool:
+        """RTL 序列器的第二调度端口只服务 VSU / VGU / VQU 类操作。"""
+        if ins.kind in ('store', 'amo', 'fdiv', 'idiv', 'rfirst', 'branch'):
+            return True
+        return ins.kind == 'load' and ins.mode == 'indexed'
+
     def schedule(self, t: int) -> bool:
-        """每周期最多向展开器发射一个 strip。返回是否发射。"""
+        """每周期最多两个调度端口：主端口任意操作，第二端口只发 VSU/VGU/VQU 类操作。返回是否发射。"""
         cfg = self.cfg
         reason = 'empty' if not self.ops else 'drain'
-        for b in self.ops:
-            if b.finished or b.next_strip >= b.nstrips:
-                continue
-            ins = b.op.ins
-            kind = ins.kind
-            if kind in ('load', 'pmem') and ins.mode != 'indexed':
-                continue                       # 单位/常量步长访存由 VMU 驱动
-            if kind == 'amo' or (kind == 'load' and ins.mode == 'indexed'):
-                kind = 'vgu'
-            elif kind == 'store' and ins.mode == 'indexed':
-                kind = 'vgu_store'
-            k = b.next_strip
-            rp = b.op.ins.rp
-            r = self._try_issue(b, k, kind, rp, t)
-            if r is None:
-                b.next_strip += 1
-                b.issue[k] = t
-                b.read_time[k] = t
-                if b.next_strip == b.nstrips and kind not in ('store', 'vgu', 'vgu_store'):
-                    b.finish_time = b.done[-1]
-                self.sim.stats.strips_issued += 1
-                return True
-            if reason in ('drain', 'empty'):
-                reason = r
-        self.last_reason = reason
-        return False
+        issued = False
+        first = None
+        for port in range(2):
+            for b in self.ops:
+                if b is first or b.finished or b.next_strip >= b.nstrips:
+                    continue
+                ins = b.op.ins
+                kind = ins.kind
+                if kind in ('load', 'pmem') and ins.mode != 'indexed':
+                    continue                       # 单位/常量步长访存由 VMU 驱动
+                if port == 1 and not self._second_port_kind(ins):
+                    continue
+                if kind == 'amo' or (kind == 'load' and ins.mode == 'indexed'):
+                    kind = 'vgu'
+                elif kind == 'store' and ins.mode == 'indexed':
+                    kind = 'vgu_store'
+                k = b.next_strip
+                rp = b.op.ins.rp
+                r = self._try_issue(b, k, kind, rp, t)
+                if r is None:
+                    b.next_strip += 1
+                    b.issue[k] = t
+                    b.read_time[k] = t
+                    if b.next_strip == b.nstrips and kind not in ('store', 'vgu', 'vgu_store'):
+                        b.finish_time = b.done[-1]
+                    self.sim.stats.strips_issued += 1
+                    issued = True
+                    first = b
+                    break
+                if port == 0 and reason in ('drain', 'empty'):
+                    reason = r
+        if not issued:
+            self.last_reason = reason
+        return issued
 
     def _try_issue(self, b: LaneOp, k: int, kind: str, rp: int, t: int) -> Optional[str]:
         cfg = self.cfg
@@ -484,6 +500,10 @@ class Lane:
         if t < self.vmu_stall_until:
             self.vmu_reason = 'tlb'
             return
+        if self._port_credit >= 1.0:
+            self._port_credit -= 1.0
+            self.vmu_reason = 'port_occ'
+            return
         if not self.vmu_queue:
             return
         b = self.vmu_queue[0]
@@ -524,6 +544,7 @@ class Lane:
             st.store_beats += 1
         b.completions[s].append(comp)
         heapq.heappush(self.outstanding, comp)
+        self._port_credit += (cfg.store_beat_cycles if (is_store or ins.kind == 'amo') else cfg.load_beat_cycles) - 1.0
         self.vmu_reason = 'busy'
         b.beat_ptr += 1
         if b.beat_ptr >= len(beats):
@@ -692,6 +713,17 @@ class Simulator:
         self.mcfg = mcfg or MemoryConfig()
         self.n = n if n is not None else kernel.n
         self.mem = MemorySystem(self.mcfg)
+        if self.mcfg.warm_l2:
+            # 预热规则：被 va 指针引用的数组预热到 (n + offset + 16) 个元素 × 步长；仅被索引访存引用的数组整体预热
+            for name, arr in kernel.arrays.items():
+                refs = [d for d in kernel.va.values() if d.kind == 'ptr' and d.array == name]
+                if refs:
+                    nbytes = max((self.n + d.offset_elems + 16) * arr.elem * max(1, d.stride_elems) for d in refs)
+                else:
+                    nbytes = arr.nbytes
+                nbytes = min(nbytes, arr.nbytes)
+                for a in range(arr.base, arr.base + nbytes, self.mcfg.line_bytes):
+                    self.mem.install(a, True)
         self.stats = SimStats(n_lanes=self.cfg.n_lanes, freq_ghz=self.cfg.freq_ghz)
         self.lanes = [Lane(self, i) for i in range(self.cfg.n_lanes)]
         self.vru = VRU(self) if self.cfg.build_vru else None
@@ -850,7 +882,7 @@ class Simulator:
                 self.cur_block = Block(len(self.blocks), self.vl)
                 self.cur_block.start_time = t
                 self.blocks.append(self.cur_block)
-                self.stall_until = t + self.cfg.vf_fetch_latency
+                self.stall_until = t + self.cfg.vf_fetch_latency + self.cfg.vf_block_overhead
             note('command')
             return
         ins = self.instrs[self.pc]

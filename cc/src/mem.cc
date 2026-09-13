@@ -161,11 +161,23 @@ L2Bank::Line *L2Bank::allocate(Addr la) {
         wb->noResp = true;
         _memQueue.push_back(wb);
         ++_wbInQueue;
-        ++*stWritebacks;
+        if (stWritebacks) ++*stWritebacks;
     }
     victim->valid = false; victim->dirty = false; victim->prefetched = false;
     victim->pending = true; victim->tag = la;
     return victim;
+}
+
+void L2Bank::installLine(Addr addr, bool dirty) {
+    Addr la = lineAddr(addr);
+    unsigned setIdx;
+    if (lookup(la, setIdx)) return;
+    Line *v = allocate(la);
+    if (!v) return;
+    v->valid = true; v->pending = false; v->dirty = dirty; v->lastUsed = curTick();
+    // allocate() 可能把被替换的脏行放进写回队列；预热阶段不需要
+    while (!_memQueue.empty()) { delete _memQueue.back(); _memQueue.pop_back(); }
+    _wbInQueue = 0;
 }
 
 bool L2Bank::recvTimingReq(Packet *pkt) {

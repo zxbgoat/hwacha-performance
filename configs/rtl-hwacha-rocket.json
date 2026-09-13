@@ -1,0 +1,23 @@
+{
+  "_comment": "对应 Chipyard 1.11 HwachaRocketConfig 的 Verilator RTL：单 lane、无 VRU、SiFive InclusiveCache 512 KB 8 路单 bank、SimDRAM；rtl/ 基准中数组由标量核初始化后驻留 L2（warm_l2=true）；裸机 M 态无地址翻译，TLB 缺失代价为 0",
+  "hwacha": {
+    "n_lanes": 1,
+    "build_vru": false,
+    "conf_prec": false,
+    "n_seq_entries": 8,
+    "store_beat_cycles": 1.0,
+    "freq_ghz": 1.0
+  },
+  "memory": {
+    "l2_banks": 1,
+    "l2_bytes_per_bank": 524288,
+    "l2_ways": 8,
+    "l2_hit_latency": 24,
+    "l2_trackers_per_bank": 16,
+    "dram_channels": 1,
+    "warm_l2": true,
+    "tlb_entries": 8,
+    "tlb_miss_latency": 0,
+    "l2_supports_amo": true
+  }
+}

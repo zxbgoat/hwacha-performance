@@ -1,6 +1,6 @@
 # @kernel sfilter
 # @n 65536
-# @cfg v64=0 v32=6 vp=0
+# @cfg v64=0 v32=6 vp=1
 # @array src elem=4 n=196608
 # @array dst elem=4 n=65536
 # @va va0 = src
@@ -10,6 +10,7 @@
 # @vs 3
 # 3 点一维模板（高斯模糊的简化）：dst[i] = m0*src[i-1] + m1*src[i] + m2*src[i+1]
 sfilter_vf:
+    vpset     vp0                # 至少需要一个谓词寄存器；未加谓词的指令隐式引用 vp0
     vlw       vv0, va0
     vlw       vv1, va1
     vlw       vv2, va2

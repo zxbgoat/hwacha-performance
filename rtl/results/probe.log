@@ -1,0 +1,13 @@
+PROBE empty vl=8 vsetvl=2 vf=2 fence=29
+PROBE empty vl=8 vsetvl=2 vf=2 fence=9
+PROBE empty vl=8 vsetvl=2 vf=2 fence=9
+PROBE load vl=8 setup=5 vf=2 fence=59
+PROBE load vl=8 setup=5 vf=2 fence=35
+PROBE empty vl=2048 vsetvl=2 vf=2 fence=264
+PROBE empty vl=2048 vsetvl=2 vf=2 fence=264
+PROBE empty vl=2048 vsetvl=2 vf=2 fence=264
+PROBE load vl=2048 setup=5 vf=2 fence=1180
+PROBE load vl=2048 setup=5 vf=2 fence=1061
+PROBE 3xload vl=2048 vf1=2 vf2=2 vf3=2 fence=3118
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

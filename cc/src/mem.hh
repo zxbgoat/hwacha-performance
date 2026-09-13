@@ -148,6 +148,8 @@ public:
     ResponsePort &cpuSide() { return _cpu; }
     RequestPort &memSide() { return _mem; }
     void regStats() override;
+    // 功能性地把一行装入缓存（用于模拟运行前已被标量核写入而驻留 L2 的数据）
+    void installLine(Addr addr, bool dirty);
 
 private:
     struct Line { bool valid = false, dirty = false, pending = false, prefetched = false; Addr tag = 0; Tick lastUsed = 0; };

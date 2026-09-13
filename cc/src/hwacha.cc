@@ -30,6 +30,9 @@ HwachaParams HwachaParams::from(const sim::Params &p) {
     h.vruMaxRunaheadBytes = (uint64_t)p.getInt("vru_max_runahead_bytes", (int64_t)h.vruMaxRunaheadBytes);
     I("tlb_entries", h.tlbEntries); I("tlb_miss_latency", h.tlbMissLatency); I("page_bytes", h.pageBytes);
     h.freqGhz = p.getDouble("freq_ghz", h.freqGhz);
+    h.storeBeatCycles = p.getDouble("store_beat_cycles", h.storeBeatCycles);
+    h.loadBeatCycles = p.getDouble("load_beat_cycles", h.loadBeatCycles);
+    I("vf_block_overhead", h.vfBlockOverhead);
     h.commitLog = p.getBool("commit_log", false);
     return h;
 }
@@ -125,25 +128,41 @@ bool Lane::loadWriteGate(LaneOp &b, unsigned k, Cycles now) {
     return true;
 }
 
+static bool secondPortKind(const Instr &ins) {
+    // RTL 序列器的第二调度端口只服务 VSU / VGU / VQU 类操作（store 数据读出、索引读出、变延迟单元读出）
+    switch (ins.kind) {
+        case Kind::Store: case Kind::Amo: case Kind::FDiv: case Kind::IDiv: case Kind::RFirst: case Kind::Branch: return true;
+        case Kind::Load: return ins.mode == Mode::Indexed;
+        default: return false;
+    }
+}
+
 bool Lane::schedule(Cycles now) {
     std::string reason = ops.empty() ? "empty" : "drain";
-    for (LaneOp *b : ops) {
-        if (b->finished || b->nextStrip >= b->nstrips) continue;
-        const Instr &ins = *b->op->ins;
-        if ((ins.kind == Kind::Load || ins.kind == Kind::PMem) && ins.mode != Mode::Indexed) continue;
-        unsigned k = b->nextStrip;
-        const char *r = tryIssue(*b, k, now);
-        if (!r) {
-            b->nextStrip++;
-            b->issue[k] = now;
-            b->readTime[k] = now;
-            ++stripsIssued;
-            return true;
+    bool issued = false;
+    LaneOp *first = nullptr;
+    for (int port = 0; port < 2; ++port) {
+        for (LaneOp *b : ops) {
+            if (b == first || b->finished || b->nextStrip >= b->nstrips) continue;
+            const Instr &ins = *b->op->ins;
+            if ((ins.kind == Kind::Load || ins.kind == Kind::PMem) && ins.mode != Mode::Indexed) continue;
+            if (port == 1 && !secondPortKind(ins)) continue;
+            unsigned k = b->nextStrip;
+            const char *r = tryIssue(*b, k, now);
+            if (!r) {
+                b->nextStrip++;
+                b->issue[k] = now;
+                b->readTime[k] = now;
+                ++stripsIssued;
+                issued = true;
+                first = b;
+                break;
+            }
+            if (port == 0 && (reason == "drain" || reason == "empty")) reason = r;
         }
-        if (reason == "drain" || reason == "empty") reason = r;
     }
-    lastReason = reason;
-    return false;
+    if (!issued) lastReason = reason;
+    return issued;
 }
 
 const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
@@ -239,6 +258,7 @@ void Lane::vmuStep(Cycles now) {
     vmuReason = "idle";
     if (_portBlocked) { vmuReason = "port_busy"; return; }
     if (now < _vmuStallUntil) { vmuReason = "tlb"; return; }
+    if (_portCredit >= 1.0) { _portCredit -= 1.0; vmuReason = "port_occ"; return; }
     if (vmuQueue.empty()) return;
     LaneOp *b = vmuQueue.front();
     if (b->nstrips == 0) { vmuQueue.pop_front(); return; }
@@ -280,6 +300,7 @@ void Lane::vmuStep(Cycles now) {
     if (ins.isLoad()) ++loadBeats; else ++storeBeats;
     if (isStore && ins.kind != Kind::Amo) --_vsdqUsed;
     if (ins.kind == Kind::Amo) --_vsdqUsed;
+    _portCredit += (isStore ? _p.storeBeatCycles : _p.loadBeatCycles) - 1.0;
     vmuReason = "busy";
     if (++b->beatPtr >= b->beats[s].size()) {
         b->beatPtr = 0; b->stripPtr++; b->stripsSent++;
@@ -550,7 +571,7 @@ void Hwacha::scalarStep(Cycles now) {
             _vfActive = true; _pc = 0; _branchTaken.clear();
             _blocks.emplace_back(new Block{(int)_blocks.size(), _vl});
             _curBlock = _blocks.back().get(); _curBlock->start = now;
-            _stallUntil = now + _p.vfFetchLatency;
+            _stallUntil = now + _p.vfFetchLatency + _p.vfBlockOverhead;
         }
         note("command");
         return;

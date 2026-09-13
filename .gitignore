@@ -6,3 +6,5 @@ build/
 dist/
 .claude/settings.local.json
 cc/build/
+rtl/*.riscv
+rtl/results/*.stdout

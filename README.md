@@ -6,7 +6,8 @@ UC Berkeley Hwacha 解耦向量取指加速器的文档集与性能模型。
 - `hwacha_perf/`：Python 版 strip 粒度性能模拟器 + 解析式上下界模型（说明见 `docs/22-performance-model.md`）
 - `cc/`：C++ 版 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；说明见 `docs/23-cpp-model.md`）
 - `kernels/`：用 Hwacha 汇编写的示例内核（vvadd、saxpy、daxpy、csaxpy、dgemm 分块、模板滤波、gather、FMA 峰值）
-- `configs/`：论文评估配置、开源主线配置、混合精度配置、理想内存配置
+- `configs/`：论文评估配置、开源主线配置、混合精度配置、理想内存配置、RTL 校准配置
+- `rtl/`：在 Chipyard 1.11 `HwachaRocketConfig` 的 Verilator RTL 上运行同一批内核的基准、微基准与探针（说明见 `docs/24-rtl-calibration.md`）
 - `tests/`：pytest 回归测试
 - `scripts/summary.py`：批量运行并输出汇总表
 

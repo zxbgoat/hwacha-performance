@@ -78,10 +78,12 @@ int main(int argc, char **argv) {
     auto *xbar = new mem::Xbar("system.l1_to_l2_xbar", corePeriod, xp);
     mem::Xbar::P mp{(int)l2Banks, (int)channels}; mp.widthBytes = 16; mp.interleaveBytes = lineBytes;
     auto *membus = new mem::Xbar("system.membus", corePeriod, mp);
+    std::vector<mem::L2Bank *> l2s;
     for (unsigned i = 0; i < l2Banks; ++i) {
         auto *b = new mem::L2Bank("system.l2.bank" + std::to_string(i), corePeriod, lp);
         xbar->memSide((int)i).bind(b->cpuSide());
         b->memSide().bind(membus->cpuSide((int)i));
+        l2s.push_back(b);
     }
     for (unsigned i = 0; i < channels; ++i) {
         auto *d = new mem::DRAMCtrl("system.dram.ch" + std::to_string(i), tCK, dp, i);
@@ -89,8 +91,22 @@ int main(int argc, char **argv) {
     }
     for (unsigned l = 0; l < hp.nLanes; ++l) hwacha->lane((int)l).port().bind(xbar->cpuSide((int)l));
     if (hp.buildVru) hwacha->vru()->port().bind(xbar->cpuSide((int)hp.nLanes));
-
     for (auto *o : SimObject::all()) o->regStats();
+    if (memP.getBool("warm_l2", false)) {
+        // 预热规则：被 va 指针引用的数组预热到 (n + offset + 16) 个元素 × 步长；仅被索引访存引用的数组整体预热
+        for (auto &[name, arr] : kernel.arrays) {
+            uint64_t bytes = 0; bool referenced = false;
+            for (auto &[reg, d] : kernel.va) if (d.isPtr && d.array == name) {
+                referenced = true;
+                bytes = std::max<uint64_t>(bytes, (n + d.offsetElems + 16) * (uint64_t)arr.elem * std::max(1, d.strideElems));
+            }
+            if (!referenced) bytes = arr.nbytes();
+            bytes = std::min<uint64_t>(bytes, arr.nbytes());
+            for (uint64_t a = arr.base; a < arr.base + bytes; a += lineBytes)
+                l2s[xbar->route(a)]->installLine(a, true);
+        }
+    }
+
     for (auto *o : SimObject::all()) o->startup();
     auto &eq = mainEventQueue();
     while (!hwacha->done()) {

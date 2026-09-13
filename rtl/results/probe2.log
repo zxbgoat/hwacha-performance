@@ -1,0 +1,19 @@
+PROBE vsetcfg 3
+PROBE vsetcfg 2
+PROBE vmcs 3
+PROBE vmcs 2
+PROBE fence_idle 2
+PROBE empty_loop_1st 607
+PROBE empty_loop_2nd 538
+PROBE load_1st 2455
+PROBE load_2nd 2146
+PROBE load_3rd 2118
+PROBE store_1st 2994
+PROBE store_2nd 2516
+PROBE store_3rd 2435
+PROBE copy_1st 4648
+PROBE copy_2nd 4471
+PROBE load_after_scalar_write 3056
+PROBE load_again 2143
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

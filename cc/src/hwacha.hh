@@ -23,6 +23,9 @@ struct HwachaParams {
     unsigned branchResolveLatency = 4, ctrlCyclesPerIter = 6;
     unsigned nVmtEntries = 64, vmuIssueLatency = 4, vluLatency = 3, vsdqBeats = 8, vldqBeats = 4, vvaqEntries = 4;
     unsigned brqDepth = 4, bwqDepth = 2, tlDataBytes = 16;
+    double storeBeatCycles = 1.0;    // 每个 store beat 占用 VMU 端口的周期数（RTL 校准用，可为分数）
+    double loadBeatCycles = 1.0;
+    unsigned vfBlockOverhead = 0;    // 每个 vf 块额外的固定周期（校准用）
     bool buildVru = true;
     unsigned vruMaxOutstanding = 20, vruEarlyIgnore = 1;
     uint64_t vruMaxRunaheadBytes = 1ull << 24;
@@ -148,6 +151,7 @@ private:
     Port _port;
     // VMU 状态
     Cycles _vmuStallUntil = 0;
+    double _portCredit = 0;          // 分数占用的累计
     unsigned _outstanding = 0;
     bool _portBlocked = false;
     mem::Packet *_pendingPkt = nullptr;

@@ -45,6 +45,9 @@ class HwachaConfig:
     vlu_latency: int = 3             # 数据返回 → 写回 VRF
     vsdq_strips: int = 2             # VSU 允许领先 VMU 发送的 strip 数（VSDQ 深度近似）
     tl_data_bytes: int = 16          # TileLink 数据宽度（128 位）
+    store_beat_cycles: float = 1.0   # 每个 store beat 占用端口的周期（校准用，可为分数）
+    load_beat_cycles: float = 1.0
+    vf_block_overhead: int = 0       # 每个 vf 块额外固定周期（校准用）
     # ---- VRU ----
     build_vru: bool = True           # 论文配置；开源主线实际关闭（见 docs/modules/08-vru.md）
     vru_max_outstanding: int = 20    # HwachaVRUMaxOutstandingPrefetches
@@ -82,6 +85,7 @@ class MemoryConfig:
     tlb_entries: int = 8             # HwachaNDTLB
     tlb_miss_latency: int = 40       # PTW 近似
     l2_supports_amo: bool = True
+    warm_l2: bool = False            # 内核数组预先驻留 L2（对应标量核初始化后的状态）
 
     @property
     def l2_total_bytes(self) -> int:

@@ -130,6 +130,16 @@ class MemorySystem:
             st.reads += 1
         return arrival + 2
 
+    def install(self, addr: int, dirty: bool = True) -> None:
+        """功能性装入一行（预热）。"""
+        line = self._line(addr)
+        s = self._set(line)
+        if line in s.lines:
+            return
+        if len(s.lines) >= self.c.l2_ways:
+            s.lines.popitem(last=False)
+        s.lines[line] = [dirty, 0, False]
+
     def is_present(self, addr: int) -> bool:
         line = self._line(addr)
         return line in self._set(line).lines
