@@ -24,7 +24,7 @@ static const std::regex VMEM_RE(R"(^v(l|s)(seg)?(st|x)?(b|h|w|d)(u)?$)");
 static const std::regex SMEM_RE(R"(^v(l|s)(a|s)(b|h|w|d)(u)?$)");
 static const std::regex AMO_RE(R"(^vamo(swap|add|and|or|xor|min|max|minu|maxu)\.([wd])$)");
 static const std::regex PLU_RE(R"(^vp(op|clear|set|(?:xor|or|and)(?:xor|or|and))$)");
-static const std::regex BR_RE(R"(^vcjal(r)?\.(all|any)$)");
+static const std::regex BR_RE(R"(^vcjal(r)?(?:\.(all|any))?$)");
 static const std::set<std::string> ALU_SET = {"vadd", "vaddu", "vsub", "vsll", "vsrl", "vsra", "vand", "vor", "vxor",
     "vslt", "vsltu", "veidx", "vaddw", "vsubw", "vsllw", "vsrlw", "vsraw"};
 static const std::set<std::string> IMUL_SET = {"vmul", "vmulh", "vmulhu", "vmulhsu", "vmulw"};
@@ -94,7 +94,11 @@ static void classify(Instr &ins) {
     if (mn == "vfence") { ins.kind = Kind::Fence; return; }
     if (std::regex_match(mn, m, BR_RE)) {
         ins.kind = Kind::Branch; ins.isVector = true; ins.slots = slotsOf(ins.kind);
-        if (!ops.empty()) { ins.dst = ops[0]; ins.label = ops.back(); }
+        // 两种写法：`vcjal.any sd, label` 与 hwacha-cc 的 `vcjal <cond>, sd, label`（cond 0 = all, 1 = any）
+        if (!ops.empty()) {
+            size_t first = (!m[2].matched && ops.size() >= 3) ? 1 : 0;
+            ins.dst = ops[first]; ins.label = ops.back();
+        }
         return;
     }
     if (mn == "vpl" || mn == "vps") {
@@ -265,10 +269,10 @@ Kernel parseKernel(const std::string &text, const std::string &path) {
             continue;
         }
         if (line.empty()) continue;
-        static const std::regex LBL(R"(^([A-Za-z_]\w*):\s*(.*)$)");
+        static const std::regex LBL(R"(^(\.?[A-Za-z_]\w*):\s*(.*)$)");
         std::smatch m;
         if (std::regex_match(line, m, LBL)) { k.labels[m[1]] = (int)k.instrs.size(); line = m[2]; if (line.empty()) continue; }
-        if (line[0] == '.') continue;
+        if (line[0] == '.') continue;   // 汇编伪指令（.align 等）
         Instr ins;
         if (parseInstr(line, ln, ins)) k.instrs.push_back(ins);
     }

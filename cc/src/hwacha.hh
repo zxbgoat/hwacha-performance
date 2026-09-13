@@ -3,6 +3,7 @@
 #include "isa.hh"
 #include "mem.hh"
 #include "sim.hh"
+#include "trace.hh"
 #include <deque>
 #include <memory>
 #include <random>
@@ -21,6 +22,7 @@ struct HwachaParams {
     unsigned fdivCyclesPerElem = 22, idivCyclesPerElem = 65;
     unsigned cmdqLen = 32, vfFetchLatency = 2, scalarSmuLatency = 30, scalarFpuLatency = 8, scalarMulDivLatency = 8;
     unsigned branchResolveLatency = 4, ctrlCyclesPerIter = 6;
+    unsigned branchStripCycles = 4;  // 谓词归约每 strip 占用的周期（RTL 实测 6）
     unsigned nVmtEntries = 64, vmuIssueLatency = 4, vluLatency = 3, vsdqBeats = 8, vldqBeats = 4, vvaqEntries = 4;
     unsigned brqDepth = 4, bwqDepth = 2, tlDataBytes = 16;
     double storeBeatCycles = 1.0;    // 每个 store beat 占用 VMU 端口的周期数（RTL 校准用，可为分数）
@@ -77,6 +79,8 @@ struct VectorOp {
     const ArrayDef *gather = nullptr;
     bool gatherUnit = false;
     unsigned fmaElems = 0;
+    const TraceInstr *trace = nullptr;         // 执行驱动：该指令的活跃掩码与访存地址
+    bool activeAt(unsigned e) const { return !trace || trace->scalar || e >= trace->active.size() || trace->active[e]; }
 };
 
 struct LaneOp {
@@ -96,6 +100,7 @@ struct LaneOp {
     Cycles finishCycle = NoCycle;
 
     unsigned nElems(unsigned k) const;
+    unsigned nActive(unsigned k) const;
     std::pair<unsigned, unsigned> stripRange(unsigned k) const;
     unsigned stripOfChunk(unsigned chunkIdx) const { return chunkIdx / op->rate; }
 };
@@ -204,7 +209,7 @@ private:
 // ---------------------------------------------------------------- Hwacha
 class Hwacha : public sim::ClockedObject {
 public:
-    Hwacha(std::string name, const HwachaParams &p, const Kernel &k, uint64_t n, unsigned lineBytes);
+    Hwacha(std::string name, const HwachaParams &p, const Kernel &k, uint64_t n, unsigned lineBytes, const Trace *trace = nullptr);
     void regStats() override;
     void startup() override;
     bool done() const { return _done; }
@@ -237,6 +242,9 @@ private:
 
     HwachaParams _p;
     Kernel _k;
+    const Trace *_trace;
+    size_t _traceBlock = 0, _tracePos = 0;
+    const TraceBlock *_curTrace = nullptr;
     uint64_t _n;
     unsigned _lineBytes;
     unsigned _maxvl;

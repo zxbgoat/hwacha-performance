@@ -80,7 +80,11 @@ bool Xbar::recvTimingReq(Packet *pkt, int src) {
     }
     if (stReqs) ++*stReqs;
     Cycles beats = (pkt->size + _p.widthBytes - 1) / _p.widthBytes;
-    occupy(l, std::max<Cycles>(1, beats));
+    if (l.lastSrc >= 0 && l.lastSrc != src) l.credit += _p.switchPenalty;
+    l.lastSrc = src;
+    Cycles extra = 0;
+    if (l.credit >= 1.0) { extra = (Cycles)l.credit; l.credit -= extra; }
+    occupy(l, std::max<Cycles>(1, beats) + extra);
     return true;
 }
 

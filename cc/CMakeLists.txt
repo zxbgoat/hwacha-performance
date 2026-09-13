@@ -9,7 +9,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2 -g")
 add_compile_options(-Wall -Wextra -Wno-unused-parameter)
 
 add_library(hwsim STATIC
-  src/sim.cc src/mem.cc src/isa.cc src/hwacha.cc)
+  src/sim.cc src/mem.cc src/isa.cc src/trace.cc src/hwacha.cc)
 target_include_directories(hwsim PUBLIC src)
 
 add_executable(hwacha-sim src/main.cc)

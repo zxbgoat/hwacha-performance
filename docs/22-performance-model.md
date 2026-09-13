@@ -64,6 +64,8 @@
 | 指令行 `# @taken N` | 一致性分支每次 vf 被采纳的次数 |
 | 指令行 `# @gather array [random\|unit]` | 索引访存的目标数组与访问模式 |
 
+`run --trace <spike-trace>` 切换到执行驱动模式：分支结果、活跃掩码与索引地址来自带补丁的 Spike 踪迹（见 `docs/24-rtl-calibration.md` 8.1 节）。
+
 ## 5. 输出指标
 
 `run` 输出：总周期、每元素周期、GFLOPS（按 FMA 元素数 ×2）、FMA 利用率、读口利用率、访存带宽（B/周期）、序列器平均占用；lane 状态分解（`issue`、`raw`、`raw_mem`、`war`、`waw`、`rport`、`fu`、`latch`、`wport`、`vsdq`、`drain`、`empty`）、标量单元状态（`issue`、`seq_full`、`scoreboard`、`branch`、`fence`、`idle`）、VMU 状态（`busy`、`vmt_full`、`tlb`、`wait_data`、`wait_addr`、`idle`）、控制线程状态（`issue`、`bookkeeping`、`vcmdq_full`、`done`）、L2/DRAM 统计与 VRU 统计。`--json` 输出机器可读格式，`--bounds` 附带解析下界。

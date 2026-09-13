@@ -20,6 +20,7 @@ from .isa import Instr, stages_for, LATCH_GROUPS
 from .program import Kernel
 from .hvl import VCfg, max_vlen, rate_of
 from .memory import MemorySystem, MemStats
+from .trace import TraceBlock, TraceInstr
 
 
 # ----------------------------------------------------------------------------
@@ -62,7 +63,7 @@ class Timeline:
 class VectorOp:
     __slots__ = ('id', 'ins', 'block', 'issue_time', 'vl', 'rate', 'E', 'lanes',
                  'slots', 'deps', 'reads', 'writes', 'complete_time', 'unit',
-                 'lat', 'stride_bytes', 'base', 'gather', 'seed')
+                 'lat', 'stride_bytes', 'base', 'gather', 'seed', 'trace')
 
     def __init__(self, oid: int, ins: Instr, block: 'Block', vl: int, rate: int, E: int):
         self.id = oid
@@ -84,6 +85,10 @@ class VectorOp:
         self.base = 0
         self.gather = None
         self.seed = oid
+        self.trace: Optional[TraceInstr] = None
+
+    def active_at(self, e: int) -> bool:
+        return self.trace is None or self.trace.active_at(e)
 
     @property
     def complete(self) -> bool:
@@ -128,6 +133,11 @@ class LaneOp:
 
     def n_elems(self, k: int) -> int:
         return sum(e1 - e0 for e0, e1 in self.strip_elems(k))
+
+    def n_active(self, k: int) -> int:
+        if self.op.trace is None:
+            return self.n_elems(k)
+        return sum(1 for e0, e1 in self.strip_elems(k) for e in range(e0, e1) if self.op.active_at(e))
 
 
 class Block:
@@ -380,7 +390,7 @@ class Lane:
         op = b.op
         ins = op.ins
         st = self.sim.stats
-        n_elems = b.n_elems(k)
+        n_elems = max(1, b.n_active(k))
         fop = t + rp + 1
         pred = ins.pred is not None
         # 读口 / 谓词口
@@ -412,6 +422,8 @@ class Lane:
             write_time = fop + lat
         elif kind in ('fdiv', 'idiv', 'rfirst', 'branch'):
             u = 'vqu'
+            if kind == 'branch':
+                occupancy = max(occupancy, cfg.branch_strip_cycles)
             if not self.units[u].free(fop, occupancy):
                 return 'fu'
             if not all(self.latches[i].free(t + 1, rp + 1) for i in LATCH_GROUPS[u]):
@@ -504,6 +516,9 @@ class Lane:
             self._port_credit -= 1.0
             self.vmu_reason = 'port_occ'
             return
+        if self.sim.mcfg.rocc_shared_port and t < self.sim.port_busy_until:
+            self.vmu_reason = 'port_busy'
+            return
         if not self.vmu_queue:
             return
         b = self.vmu_queue[0]
@@ -524,6 +539,14 @@ class Lane:
             self.vmu_reason = 'vmt_full'
             return
         beats = b.beats[s]
+        if not beats:                    # 该 strip 的 beat 已被前一 strip 覆盖
+            b.beat_ptr = 0
+            b.strip_ptr += 1
+            b.strips_sent += 1
+            if b.strip_ptr >= b.nstrips:
+                self.vmu_queue.popleft()
+            self.vmu_reason = 'busy'
+            return
         addr = beats[b.beat_ptr] * cfg.tl_data_bytes
         page = addr // self.sim.mcfg.page_bytes
         if page not in self.tlb:
@@ -545,6 +568,13 @@ class Lane:
         b.completions[s].append(comp)
         heapq.heappush(self.outstanding, comp)
         self._port_credit += (cfg.store_beat_cycles if (is_store or ins.kind == 'amo') else cfg.load_beat_cycles) - 1.0
+        if self.sim.mcfg.rocc_shared_port:
+            if self.sim.port_last_src >= 0 and self.sim.port_last_src != self.id:
+                self.sim.port_credit += self.sim.mcfg.rocc_switch_penalty
+            extra = int(self.sim.port_credit)
+            self.sim.port_credit -= extra
+            self.sim.port_busy_until = t + 1 + extra
+            self.sim.port_last_src = self.id
         self.vmu_reason = 'busy'
         b.beat_ptr += 1
         if b.beat_ptr >= len(beats):
@@ -565,7 +595,7 @@ class Lane:
                 k = b.next_done
                 if k >= b.strips_sent or len(b.completions[k]) < len(b.beats[k]):
                     break
-                ret = max(b.completions[k])
+                ret = max(b.completions[k]) if b.completions[k] else t
                 if ret > t:
                     break
                 if ins.is_load:
@@ -707,13 +737,28 @@ class VRU:
 # ----------------------------------------------------------------------------
 class Simulator:
     def __init__(self, kernel: Kernel, cfg: Optional[HwachaConfig] = None,
-                 mcfg: Optional[MemoryConfig] = None, n: Optional[int] = None):
+                 mcfg: Optional[MemoryConfig] = None, n: Optional[int] = None,
+                 trace: Optional[list] = None):
         self.kernel = kernel
         self.cfg = cfg or HwachaConfig()
         self.mcfg = mcfg or MemoryConfig()
+        self.trace = trace            # 执行驱动：list[TraceBlock]
+        self._trace_block = 0
+        self._cur_trace: Optional[TraceBlock] = None
+        self._trace_pos = 0
+        if trace is not None and n is None:
+            n = sum(b.vl for b in trace)
         self.n = n if n is not None else kernel.n
         self.mem = MemorySystem(self.mcfg)
-        if self.mcfg.warm_l2:
+        self.port_busy_until = 0        # rocc_shared_port：共享端口
+        self.port_last_src = -1
+        self.port_credit = 0.0
+        if self.mcfg.warm_l2 and trace is not None:
+            for blk in trace:
+                for ti in blk.instrs:
+                    for _, a in ti.mem:
+                        self.mem.install(a, True)
+        elif self.mcfg.warm_l2:
             # 预热规则：被 va 指针引用的数组预热到 (n + offset + 16) 个元素 × 步长；仅被索引访存引用的数组整体预热
             for name, arr in kernel.arrays.items():
                 refs = [d for d in kernel.va.values() if d.kind == 'ptr' and d.array == name]
@@ -757,7 +802,7 @@ class Simulator:
         self.ctrl_busy_until = 0
         self.ctrl_done = False
         self.ctrl_cycles = kernel.ctrl_cycles if kernel.ctrl_cycles is not None else self.cfg.ctrl_cycles_per_iter
-        self.iters_total = kernel.iters if kernel.iters else math.ceil(self.n / self.maxvl)
+        self.iters_total = len(trace) if trace is not None else (kernel.iters if kernel.iters else math.ceil(self.n / self.maxvl))
         self._va_offsets: dict[str, int] = {r: 0 for r in kernel.va}
         self._ctrl_seed()
 
@@ -791,10 +836,16 @@ class Simulator:
         self._ctrl_next_iter()
 
     def _ctrl_next_iter(self) -> None:
-        if self.ctrl_iter >= self.iters_total or self.ctrl_remaining <= 0:
+        if self.trace is not None:
+            if self.ctrl_iter >= len(self.trace):
+                self.ctrl_done = True
+                return
+            vl = self.trace[self.ctrl_iter].vl
+        elif self.ctrl_iter >= self.iters_total or self.ctrl_remaining <= 0:
             self.ctrl_done = True
             return
-        vl = min(self.ctrl_remaining, self.maxvl)
+        else:
+            vl = min(self.ctrl_remaining, self.maxvl)
         self.ctrl_cmds.append(('vsetvl', vl))
         for reg, d in self.kernel.va.items():
             if d.kind == 'ptr':
@@ -810,7 +861,7 @@ class Simulator:
             self.ctrl_cmds.append(('vmcs',))
         self.ctrl_cmds.append(('vf', vl, self.ctrl_iter))
         self.ctrl_cmds.append(('_ctrl', self.ctrl_cycles))
-        self.ctrl_remaining -= vl
+        self.ctrl_remaining -= min(self.ctrl_remaining, vl)
         self.ctrl_iter += 1
 
     def ctrl_step(self, t: int) -> None:
@@ -856,14 +907,17 @@ class Simulator:
                 note('branch')
                 return
             self.pending_branch = None
-            key = ins.line_no
-            taken_budget = int(ins.annot.get('taken', 0) or 0)
-            cnt = self.branch_taken_count.get(key, 0)
-            if cnt < taken_budget:
-                self.branch_taken_count[key] = cnt + 1
-                self.pc = self.kernel.labels[ins.label]
+            if self._cur_trace is not None:
+                self._trace_pos += 1
             else:
-                self.pc += 1
+                key = ins.line_no
+                taken_budget = int(ins.annot.get('taken', 0) or 0)
+                cnt = self.branch_taken_count.get(key, 0)
+                if cnt < taken_budget:
+                    self.branch_taken_count[key] = cnt + 1
+                    self.pc = self.kernel.labels[ins.label]
+                else:
+                    self.pc += 1
             note('issue')
             return
         if not self.vf_active:
@@ -879,12 +933,28 @@ class Simulator:
                 self.vf_active = True
                 self.pc = 0
                 self.branch_taken_count = {}
+                self._cur_trace = None
+                self._trace_pos = 0
+                if self.trace is not None and self._trace_block < len(self.trace):
+                    self._cur_trace = self.trace[self._trace_block]
+                    self._trace_block += 1
+                    self.vl = self._cur_trace.vl
                 self.cur_block = Block(len(self.blocks), self.vl)
                 self.cur_block.start_time = t
                 self.blocks.append(self.cur_block)
                 self.stall_until = t + self.cfg.vf_fetch_latency + self.cfg.vf_block_overhead
             note('command')
             return
+        ti = None
+        if self._cur_trace is not None:
+            if self._trace_pos >= len(self._cur_trace.instrs):
+                self.vf_active = False
+                self.cur_block.stopped = True
+                self._maybe_ack(self.cur_block)
+                note('issue')
+                return
+            ti = self._cur_trace.instrs[self._trace_pos]
+            self.pc = (ti.pc - self._cur_trace.start_pc) // 8
         ins = self.instrs[self.pc]
         # 共享寄存器 scoreboard
         for r in ins.srcs:
@@ -908,10 +978,12 @@ class Simulator:
                 note('fence')
                 return
             self.pc += 1
+            self._trace_pos += 1
             note('issue')
             return
         if k == 'scalar':
             self.pc += 1
+            self._trace_pos += 1
             note('issue')
             self.stats.instrs_issued += 1
             return
@@ -921,6 +993,7 @@ class Simulator:
             if ins.dst and ins.dst.startswith('vs'):
                 self.scoreboard[ins.dst] = t + lat
             self.pc += 1
+            self._trace_pos += 1
             note('issue')
             self.stats.instrs_issued += 1
             return
@@ -928,7 +1001,7 @@ class Simulator:
         if self.slots_used + ins.slots > self.cfg.n_seq_entries:
             note('seq_full')
             return
-        op = self._issue_vector(ins, t)
+        op = self._issue_vector(ins, t, ti)
         self.stats.instrs_issued += 1
         self.stats.vector_ops += 1
         if k == 'branch':
@@ -937,6 +1010,7 @@ class Simulator:
             self.scoreboard[ins.dst] = op
         if k != 'branch':
             self.pc += 1
+            self._trace_pos += 1
         note('issue')
 
     def _maybe_ack(self, blk: Block) -> None:
@@ -946,7 +1020,7 @@ class Simulator:
                 self.vru.ack_block()
 
     # ---- 向量发射 ----
-    def _issue_vector(self, ins: Instr, t: int) -> VectorOp:
+    def _issue_vector(self, ins: Instr, t: int, ti: Optional[TraceInstr] = None) -> VectorOp:
         cfg = self.cfg
         vc = self.kernel.vcfg
         # 速率（混合精度）
@@ -963,6 +1037,7 @@ class Simulator:
         op = VectorOp(self.next_op_id, ins, self.cur_block, vl, rate, E)
         self.next_op_id += 1
         op.issue_time = t
+        op.trace = ti
         # 依赖
         for A in self.inflight:
             if A.complete:
@@ -989,6 +1064,12 @@ class Simulator:
             if ins.is_mem:
                 lo.vmu_start = t + cfg.vmu_issue_latency
                 lo.beats = [self._beats(op, lo, k) for k in range(lo.nstrips)]
+                last = None
+                for bs in lo.beats:
+                    if bs and last is not None and bs[0] == last:
+                        del bs[0]
+                    if bs:
+                        last = bs[-1]
                 lo.completions = [[] for _ in range(lo.nstrips)]
                 if lo.nstrips:
                     lane.vmu_queue.append(lo)
@@ -1019,6 +1100,26 @@ class Simulator:
         ins = op.ins
         tb = self.cfg.tl_data_bytes
         out: list[int] = []
+        if op.trace is not None and not op.trace.scalar and op.trace.mem:
+            addr_of = dict(op.trace.mem)
+            last = -1
+            for e0, e1 in lo.strip_elems(k):
+                for e in range(e0, e1):
+                    a = addr_of.get(e)
+                    if a is None:
+                        continue
+                    for j in range(ins.seglen + 1):
+                        aa = a + j * ins.elsize
+                        for x in range(aa, aa + ins.elsize, tb):
+                            b = x // tb
+                            if b != last:
+                                out.append(b)
+                                last = b
+                        b = (aa + ins.elsize - 1) // tb
+                        if b != last:
+                            out.append(b)
+                            last = b
+            return out
         if ins.mode == 'unit':
             step = op.stride_bytes
             for e0, e1 in lo.strip_elems(k):
@@ -1082,10 +1183,14 @@ class Simulator:
             for lane in self.lanes:
                 lane.mem_completion_step(t)
             self.retire_step(t)
-            for lane in self.lanes:
+            # 共享端口时按轮转顺序推进各 lane 的 VMU，避免第一个 lane 独占端口
+            nl = len(self.lanes)
+            for i in range(nl):
+                lane = self.lanes[(i + t) % nl]
                 lane.vmu_step(t)
                 r = lane.vmu_reason
                 st.vmu_cycle[r] = st.vmu_cycle.get(r, 0) + 1
+            for lane in self.lanes:
                 issued = lane.schedule(t)
                 key = 'issue' if issued else lane.last_reason
                 st.lane_cycle[key] = st.lane_cycle.get(key, 0) + 1

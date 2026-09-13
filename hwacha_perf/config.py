@@ -38,6 +38,7 @@ class HwachaConfig:
     scalar_fpu_latency: int = 8      # 经 FPREQQ/FPRESPQ 使用 Rocket FPU
     scalar_muldiv_latency: int = 8
     branch_resolve_latency: int = 4  # 谓词归约汇总到标量单元
+    branch_strip_cycles: int = 4     # 谓词归约每 strip 占用周期（RTL 实测 6）
     ctrl_cycles_per_iter: int = 6    # 控制线程每次 stripmine 的地址簿记/循环开销（命令本身另计）
     # ---- VMU / DCC ----
     n_vmt_entries: int = 64          # HwachaNVMTEntries：每 lane 在途 beat 上限
@@ -86,6 +87,8 @@ class MemoryConfig:
     tlb_miss_latency: int = 40       # PTW 近似
     l2_supports_amo: bool = True
     warm_l2: bool = False            # 内核数组预先驻留 L2（对应标量核初始化后的状态）
+    rocc_shared_port: bool = False   # 所有 lane 共用 RoCC 的一个 TileLink 端口（Chipyard 集成方式）
+    rocc_switch_penalty: float = 0.0 # 共享端口上源切换的额外周期（可为分数）
 
     @property
     def l2_total_bytes(self) -> int:
@@ -96,6 +99,10 @@ def _apply(obj: Any, overrides: dict) -> Any:
     names = {f.name for f in fields(obj)}
     for k, v in overrides.items():
         if k not in names:
+            if k.startswith('dram_t') or k.startswith('dram_burst') or k in ('dram_tck_ps', 'dram_banks', 'dram_row_bytes',
+                                                                             'dram_frontend_latency', 'dram_backend_latency',
+                                                                             'dram_read_queue', 'dram_write_queue', 'l2_tag_latency', 'l2_data_latency'):
+                continue    # 仅 C++ 模型使用的 DRAM/L2 细节参数
             raise KeyError(f"unknown parameter: {k}")
         setattr(obj, k, type(getattr(obj, k))(v) if not isinstance(getattr(obj, k), bool) else bool(v))
     return obj

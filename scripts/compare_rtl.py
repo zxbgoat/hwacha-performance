@@ -36,6 +36,7 @@ def main():
     ap.add_argument('--logs', default=None)
     ap.add_argument('--config', default=os.path.join(ROOT, 'configs', 'rtl-hwacha-rocket.json'))
     ap.add_argument('--no-py', action='store_true')
+    ap.add_argument('--max-err', type=float, default=None, help='任一内核 C++ 误差超过该百分比则返回非零')
     a = ap.parse_args()
     logs = a.logs.split(',') if a.logs else sorted(glob.glob(os.path.join(ROOT, 'rtl', 'results', '*.log')))
     res = rtl_results(logs)
@@ -57,6 +58,9 @@ def main():
         if c: errs.append(abs(100*(c-ref)/ref))
     if errs:
         print(f"C++ mean |err| = {sum(errs)/len(errs):.1f}%, max = {max(errs):.1f}%")
+        if a.max_err is not None and max(errs) > a.max_err:
+            print(f"FAIL: max error {max(errs):.1f}% > {a.max_err}%")
+            sys.exit(1)
 
 if __name__ == '__main__':
     main()

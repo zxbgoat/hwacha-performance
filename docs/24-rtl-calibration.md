@@ -121,10 +121,66 @@ Python 模型与 C++ 模型在这些内核上相差不到 0.1%。计算侧（ALU
 
 这一组不能作为校准依据：基准程序的静态数组总量约 1.1 MB，超过 512 KB 的 L2，数据不再驻留，而 `rtl-hwacha-rocket.json` 假定 `warm_l2`，且 RTL 一侧的主存路径（SimDRAM 经 500 MHz、64 位的 mbus）尚未测量和建模。要在这个规模上比较，需要先用超过 L2 容量的流式微基准测出 RTL 的主存带宽与延迟，把它写进配置，再关闭 `warm_l2`。
 
-## 8. 下一步
+## 8. 第二轮：执行驱动、块内标量与分支、2 lane、主存路径
 
-1. 混合访存的 store 代价：用 `+verbose` 的 TileLink 通道跟踪确认 InclusiveCache 对 Put 的处理周期，把它作为 L2 的写占用参数而不是端口占用。
-2. 未对齐单位步长访存的 beat 合并：按 RTL 的 VMU 边界处理重写 `beatsFor`。
-3. 冷启动效应：为 `warm_l2` 增加"L1D 中共享/脏行"的可选描述，复现 `_warm`/冷两列。
-4. 主存路径：用工作集超过 L2 的流式微基准测出 SimDRAM + mbus 的带宽与延迟，使 N ≥ 16384 的比较有效。
-5. 多 lane、VRU、混合精度在开源 RTL 上都没有可用配置（VRU 未接入，多 lane 配置未验证），这部分仍只能对论文数据做趋势校验。
+### 8.1 执行驱动（踪迹模式）
+
+给 `esp-isa-sim` 的 Hwacha 扩展打了补丁（`~/hwacha-compiler/esp-isa-sim/hwacha`：`insns/vf.h`、`decode_hwacha_ut.h`、`insns_ut/{vamo*,vlsegx*,vssegx*}.h`、`hwacha.{h,cc}`）：设置环境变量 `HWACHA_TRACE=<file>` 时，每条工作线程指令输出一行
+`H: WT pc=… inst=… next=… vl=… act=<每元素活跃掩码>`，每个访存元素输出一行 `HMEM: read/write/rmw <addr> ut=<元素>`。`scripts/hwacha_trace.py run` 生成踪迹，`range` 用 ELF 符号表给出某个 vf 块的地址范围。两个模型都接受 `--trace <file> [--trace-range lo:hi] [--trace-blocks a:b]`：每次 vf 从踪迹取动态指令序列（分支结果、循环次数）、每条指令的活跃掩码（谓词化访存只为活跃元素发 beat，变延迟单元按活跃元素计）与访存地址（索引/原子访存直接用踪迹地址），控制线程按踪迹中每块的 vl 做 stripmine，`warm_l2` 预热踪迹触及的行。
+
+这样就可以直接校验 hwacha-cc 编译出的 OpenCL 内核（`kernels/hcc/*.S` 原样复制自 `hwacha-cc/test/bench/bench.s`，含分歧循环、一致性分支、块内标量访存与乘法、谓词逻辑）。RTL 侧用 `rtl/hcc/`（三次计时版的 bench_main.c）取稳态：
+
+| hwacha-cc 内核（N = 1024） | RTL 冷 | RTL 稳态 | 模型（踪迹驱动） | 误差 |
+|---|---|---|---|---|
+| saxpy | 1640 | 875 | 842 | −3.8% |
+| clamp_scale（select → 两条互斥谓词化写） | 1049 | 734 | 685 | −6.7% |
+| stencil（3 点） | 1822 | 1441 | 1361 | −5.6% |
+| gather（随机置换） | 2238 | 1688 | 1637 | −3.0% |
+| divloop（每元素 0–15 次的分歧循环，17 次一致性分支，136 个向量操作） | 17278 | 16711 | 14689 | −12.1% |
+
+静态模式（注解给分支次数、伪随机索引）对这些内核无法给出有意义的结果；踪迹模式下 Python 与 C++ 模型逐周期一致。
+
+### 8.2 块内标量指令与一致性分支（`rtl/results/probe5.log`）
+
+| 项目 | RTL（稳态） | 结论与模型参数 |
+|---|---|---|
+| 4 条相关标量 load（SMU） | 每条约 9.5 拍 | `scalar_smu_latency` 30 → 12 |
+| 4 条相关标量乘 | 每条约 4 拍 | `scalar_muldiv_latency` 8 → 5 |
+| 8 条相关标量加 | 每条 1 拍 | 与模型一致 |
+| 一致性分支，vl = 8 | 约 7 拍 | `branch_resolve_latency` 4 → 0 |
+| 一致性分支，vl = 1024 | 768 拍 = 128 strip × 6 | 谓词归约每 strip 6 拍：新增 `branch_strip_cycles`（默认 4，RTL 配置 6） |
+
+分支的每 strip 6 拍解释了 hwacha-cc 工程日志里"vcjal 约 50 拍"的观察（vl = 64 时 8 个 strip），也是 divloop 从 −26% 收敛到 −12% 的主要修正；残余 12% 尚未定位。
+
+### 8.3 主存路径（`rtl/results/probe4.log`）
+
+用 2 MB 标量写把 L2 冲掉后再向量 load 32 KB：2103 拍，与 L2 命中时（2137）相同；单个 strip 从"主存"读 44–69 拍，命中时 35 拍。即 Chipyard 1.11 默认 harness 的 SimDRAM（`mm_magic`）几乎没有延迟和带宽限制，L2 缺失只多 10–15 拍。`rtl-hwacha-rocket*.json` 据此把 DRAM 时序设为极快；`warm_l2` 对结果影响很小。之前 N = 16384 的偏差因此确认全部来自冷启动效应而不是 DRAM。
+
+### 8.4 2 lane RTL
+
+新增 Chipyard 配置 `HwachaL2RocketConfig = WithNLanes(2) ++ HwachaRocketConfig`（`generators/chipyard/src/main/scala/config/HwachaLaneConfigs.scala`），Verilator 构建约 1 小时。微基准（N = 4096，稳态）：
+
+| kernel | 1 lane RTL | 2 lane RTL | 2 lane 模型 | 误差 |
+|---|---|---|---|---|
+| micro_alu | 8224 | 4129 | 4235 | +2.6% |
+| micro_fma_dep | 8251 | 4155 | 4238 | +2.0% |
+| micro_empty | 549 | 290 | 265 | −8.6% |
+| micro_load | 2149 | 2662 | 2701 | +1.5% |
+| micro_load2 | 4213 | 5244 | 5362 | +2.3% |
+| micro_store | 2456 | 3206 | 2696 | −15.9% |
+| micro_copy | 4604 | 5735 | 5357 | −6.6% |
+| micro_ldst | 4602 | 5761 | 5357 | −7.0% |
+
+计算侧随 lane 数线性扩展（8224 → 4129），模型一致。**访存侧 2 lane 反而比 1 lane 慢**（load 2149 → 2662，store 2456 → 3206）：Chipyard 集成里所有 lane 的 VMU 经 `TLWidthWidget(16)` 汇入 RoCC 的同一个 TileLink 节点，再经 tile 的主交叉开关进入 sbus，两个 lane 争用一个 128 位端口，仲裁还带来约每 beat 0.3 拍的额外开销；论文中每 lane 有独立的 L2 端口。模型新增 `rocc_shared_port`（所有 lane 与 VRU 汇入一个端口）与 `rocc_switch_penalty`（源切换的分数周期，按信用折算），RTL 配置取 true / 0.3。这意味着在开源集成上，多 lane 只对计算受限内核有意义。
+
+### 8.5 当前误差汇总（C++ 模型，`store_beat_cycles` 1.15）
+
+单 lane 8 个内核 + 10 个微基准：平均 2.5%，最大 8.0%（sfilter）。2 lane 微基准：平均 6.0%，最大 15.9%（store）。hwacha-cc 内核（踪迹驱动）：4 个在 3%–7%，divloop −12%。
+
+## 9. 下一步
+
+1. store 的代价随布局在每 beat 1.0–1.2 拍之间波动、2 lane 下更高：需要 TileLink 通道级跟踪定位是 InclusiveCache 的 Put 路径还是 tile 交叉开关的仲裁。
+2. divloop 残余 −12%：块内谓词逻辑（vpop）与谓词化向量操作交错时的调度细节。
+3. sfilter +8%：3 个 load 占 9 个序列器槽位时的窗口行为，模型比 RTL 保守。
+4. 冷启动效应（L1D 脏行/共享行探测）可作为 `warm_l2` 的可选描述建模。
+5. VRU 与混合精度在开源 RTL 上仍没有可用配置，只能对论文数据做趋势校验。

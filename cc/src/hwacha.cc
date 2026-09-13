@@ -22,6 +22,7 @@ HwachaParams HwachaParams::from(const sim::Params &p) {
     I("cmdq_len", h.cmdqLen); I("vf_fetch_latency", h.vfFetchLatency); I("scalar_smu_latency", h.scalarSmuLatency);
     I("scalar_fpu_latency", h.scalarFpuLatency); I("scalar_muldiv_latency", h.scalarMulDivLatency);
     I("branch_resolve_latency", h.branchResolveLatency); I("ctrl_cycles_per_iter", h.ctrlCyclesPerIter);
+    I("branch_strip_cycles", h.branchStripCycles);
     I("n_vmt_entries", h.nVmtEntries); I("vmu_issue_latency", h.vmuIssueLatency); I("vlu_latency", h.vluLatency);
     I("vsdq_beats", h.vsdqBeats); I("vldq_beats", h.vldqBeats); I("vvaq_entries", h.vvaqEntries);
     I("brq_depth", h.brqDepth); I("bwq_depth", h.bwqDepth); I("tl_data_bytes", h.tlDataBytes);
@@ -72,6 +73,13 @@ static const std::map<std::string, std::vector<unsigned>> LATCH_GROUPS = {
 unsigned LaneOp::nElems(unsigned k) const {
     unsigned n = 0, r = op->rate;
     for (unsigned i = k * r; i < std::min<unsigned>((k + 1) * r, chunks.size()); ++i) n += chunks[i].second - chunks[i].first;
+    return n;
+}
+unsigned LaneOp::nActive(unsigned k) const {
+    if (!op->trace) return nElems(k);
+    unsigned n = 0, r = op->rate;
+    for (unsigned i = k * r; i < std::min<unsigned>((k + 1) * r, chunks.size()); ++i)
+        for (unsigned e = chunks[i].first; e < chunks[i].second; ++e) n += op->activeAt(e);
     return n;
 }
 std::pair<unsigned, unsigned> LaneOp::stripRange(unsigned k) const {
@@ -173,7 +181,7 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
     else if (kind == Kind::Store && ins.mode == Mode::Indexed) skind = "vgu_store";
     else skind = kindName(kind);
     unsigned rp = ins.rp;
-    unsigned nElems = b.nElems(k);
+    unsigned nElems = std::max(1u, b.nActive(k));
     Cycles fop = now + rp + 1;
     bool pred = !ins.pred.empty();
     if (rp && !_readPort.free(now, rp)) return "rport";
@@ -200,6 +208,7 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
         lat = stagesFor(ins, _p);
         writeTime = fop + lat;
     } else if (skind == "fdiv" || skind == "idiv" || skind == "rfirst" || skind == "branch") {
+        if (skind == "branch") occupancy = std::max(occupancy, _p.branchStripCycles);
         if (!_units["vqu"].free(fop, occupancy)) return "fu";
         if (!latchesFree("vqu")) return "latch";
         unit = "vqu";
@@ -241,7 +250,7 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
             fuBusy[skind] += writeTime - 2 - s0;
         }
     }
-    if (skind == "fma") _h.noteFma(nElems);
+    if (skind == "fma") _h.noteFma(b.nActive(k));
     if (writeTime != NoCycle) {
         if (ins.writesPrf()) _predWrite.reserve(writeTime);
         else if (vrfWrite) { for (unsigned bk = 0; bk < _p.nBanks; ++bk) _bankWrite[bk].reserve(writeTime + bk); ++writePortBusy; }
@@ -481,14 +490,14 @@ void VRU::step(Cycles now) {
 }
 
 // ---------------------------------------------------------------- Hwacha
-Hwacha::Hwacha(std::string n, const HwachaParams &p, const Kernel &k, uint64_t nElems, unsigned lineBytes)
-    : ClockedObject(std::move(n), p.period()), _p(p), _k(k), _n(nElems), _lineBytes(lineBytes),
+Hwacha::Hwacha(std::string n, const HwachaParams &p, const Kernel &k, uint64_t nElems, unsigned lineBytes, const Trace *trace)
+    : ClockedObject(std::move(n), p.period()), _p(p), _k(k), _trace(trace), _n(nElems), _lineBytes(lineBytes),
       _tickEvent([this] { tick(); }, name() + ".tick", sim::Event::CPU_Tick_Pri), _ctrlRemaining(nElems) {
     _maxvl = maxVlen(_p, _k.vcfg);
     for (unsigned i = 0; i < _p.nLanes; ++i) _lanes.emplace_back(new Lane(*this, (int)i));
     if (_p.buildVru) _vru.reset(new VRU(*this));
     _ctrlCycles = _k.ctrlCycles >= 0 ? (unsigned)_k.ctrlCycles : _p.ctrlCyclesPerIter;
-    _itersTotal = _k.iters ? (unsigned)_k.iters : (unsigned)((_n + _maxvl - 1) / _maxvl);
+    _itersTotal = _trace ? (unsigned)_trace->blocks.size() : _k.iters ? (unsigned)_k.iters : (unsigned)((_n + _maxvl - 1) / _maxvl);
     for (auto &r : _k.vaOrder) _vaOffsets[r] = 0;
     _ctrlCmds.push_back({"vsetcfg"});
     ctrlNextIter();
@@ -508,8 +517,11 @@ void Hwacha::startup() { sim::mainEventQueue().schedule(&_tickEvent, clockEdge(1
 
 // ---- 控制线程 ----
 void Hwacha::ctrlNextIter() {
-    if (_ctrlIter >= _itersTotal || _ctrlRemaining == 0) { _ctrlDone = true; return; }
-    unsigned vl = (unsigned)std::min<uint64_t>(_ctrlRemaining, _maxvl);
+    if (_trace) {
+        // 执行驱动：每个踪迹块对应一次 vf，vl 取踪迹值
+        if (_ctrlIter >= _trace->blocks.size()) { _ctrlDone = true; return; }
+    } else if (_ctrlIter >= _itersTotal || _ctrlRemaining == 0) { _ctrlDone = true; return; }
+    unsigned vl = _trace ? _trace->blocks[_ctrlIter].vl : (unsigned)std::min<uint64_t>(_ctrlRemaining, _maxvl);
     _ctrlCmds.push_back({"vsetvl", std::to_string(vl)});
     for (auto &reg : _k.vaOrder) {
         const VaDef &d = _k.va.at(reg);
@@ -524,7 +536,7 @@ void Hwacha::ctrlNextIter() {
     for (unsigned i = 0; i < _k.nVmcs; ++i) _ctrlCmds.push_back({"vmcs"});
     _ctrlCmds.push_back({"vf", std::to_string(vl)});
     _ctrlCmds.push_back({"_ctrl", std::to_string(_ctrlCycles)});
-    _ctrlRemaining -= vl;
+    _ctrlRemaining -= std::min<uint64_t>(_ctrlRemaining, vl);
     ++_ctrlIter;
 }
 
@@ -556,9 +568,12 @@ void Hwacha::scalarStep(Cycles now) {
         if (!_pendingBranch->complete || now < _pendingBranch->completeCycle) { note("branch"); return; }
         const Instr &ins = *_pendingBranchIns;
         _pendingBranch = nullptr;
-        int budget = ins.annot.count("taken") ? std::stoi(ins.annot.at("taken")) : 0;
-        int &cnt = _branchTaken[ins.lineNo];
-        if (cnt < budget) { ++cnt; _pc = _k.labels.at(ins.label); } else ++_pc;
+        if (_curTrace) { ++_tracePos; }
+        else {
+            int budget = ins.annot.count("taken") ? std::stoi(ins.annot.at("taken")) : 0;
+            int &cnt = _branchTaken[ins.lineNo];
+            if (cnt < budget) { ++cnt; _pc = _k.labels.at(ins.label); } else ++_pc;
+        }
         note("issue");
         return;
     }
@@ -569,12 +584,27 @@ void Hwacha::scalarStep(Cycles now) {
         else if (cmd[0] == "vmca") _va[cmd[1]] = std::stoull(cmd[2]);
         else if (cmd[0] == "vf") {
             _vfActive = true; _pc = 0; _branchTaken.clear();
+            _curTrace = nullptr; _tracePos = 0;
+            if (_trace) {
+                if (_traceBlock < _trace->blocks.size()) {
+                    _curTrace = &_trace->blocks[_traceBlock++];
+                    if (_curTrace->vl != _vl) { _warnings.push_back("trace vl " + std::to_string(_curTrace->vl) + " != model vl " + std::to_string(_vl)); _vl = _curTrace->vl; }
+                } else if (_warnings.empty() || _warnings.back().rfind("trace exhausted", 0) != 0) _warnings.push_back("trace exhausted; falling back to static block");
+            }
             _blocks.emplace_back(new Block{(int)_blocks.size(), _vl});
             _curBlock = _blocks.back().get(); _curBlock->start = now;
             _stallUntil = now + _p.vfFetchLatency + _p.vfBlockOverhead;
         }
         note("command");
         return;
+    }
+    const TraceInstr *ti = nullptr;
+    if (_curTrace) {
+        if (_tracePos >= _curTrace->instrs.size()) { _vfActive = false; _curBlock->stopped = true; maybeAck(_curBlock); note("issue"); return; }
+        ti = &_curTrace->instrs[_tracePos];
+        uint64_t idx = (ti->pc - _curTrace->startPc) / 8;
+        if (idx >= _k.instrs.size()) sim::fatal("trace pc outside kernel block (index " + std::to_string(idx) + ")");
+        _pc = (size_t)idx;
     }
     const Instr &ins = _k.instrs[_pc];
     for (auto &r : ins.srcs) {
@@ -594,22 +624,37 @@ void Hwacha::scalarStep(Cycles now) {
         case Kind::Fence: {
             bool pend = std::any_of(_inflight.begin(), _inflight.end(), [](VectorOp *o) { return o->ins->isMem() && !o->complete; });
             if (pend) { note("fence"); return; }
-            ++_pc; note("issue"); return;
+            ++_pc; ++_tracePos; note("issue"); return;
         }
-        case Kind::Scalar: ++_pc; note("issue"); ++_instrsIssued; return;
+        case Kind::Scalar: ++_pc; ++_tracePos; note("issue"); ++_instrsIssued; return;
         case Kind::SLoad: case Kind::SStore: case Kind::SFp: case Kind::SMulDiv: {
             unsigned lat = ins.kind == Kind::SLoad ? _p.scalarSmuLatency : ins.kind == Kind::SStore ? 1 : ins.kind == Kind::SFp ? _p.scalarFpuLatency : _p.scalarMulDivLatency;
             if (ins.dst.rfind("vs", 0) == 0) _scoreboard[ins.dst] = SbEntry{now + lat, nullptr};
-            ++_pc; note("issue"); ++_instrsIssued; return;
+            ++_pc; ++_tracePos; note("issue"); ++_instrsIssued; return;
         }
         default: break;
     }
     if (_slotsUsed + ins.slots > _p.nSeqEntries) { note("seq_full"); return; }
     VectorOp *op = issueVector(ins, now);
+    op->trace = ti;
+    if (ins.isMem() && ti) {
+        // 用踪迹重算访存 beat（活跃掩码与索引地址）
+        for (unsigned l = 0; l < _p.nLanes; ++l) {
+            LaneOp *lo = op->lanes[l].get();
+            lo->beats.clear();
+            uint64_t lastAddr = ~0ull;
+            for (unsigned k = 0; k < lo->nstrips; ++k) {
+                auto bs = beatsFor(*op, *lo, k);
+                if (!bs.empty() && bs.front().addr == lastAddr) bs.erase(bs.begin());
+                if (!bs.empty()) lastAddr = bs.back().addr;
+                lo->beats.push_back(std::move(bs));
+            }
+        }
+    }
     ++_instrsIssued; ++_vectorOps;
     if (ins.kind == Kind::Branch) { _pendingBranch = op; _pendingBranchIns = &ins; }
     else if (ins.kind == Kind::RFirst && !ins.dst.empty()) _scoreboard[ins.dst] = SbEntry{NoCycle, op};
-    if (ins.kind != Kind::Branch) ++_pc;
+    if (ins.kind != Kind::Branch) { ++_pc; ++_tracePos; }
     note("issue");
 }
 
@@ -700,11 +745,27 @@ std::vector<LaneOp::Beat> Hwacha::beatsFor(VectorOp &op, LaneOp &lo, unsigned k)
         if (std::find(bk.begin(), bk.end(), bank) == bk.end()) bk.push_back(bank);
     };
     unsigned r = op.rate;
+    if (op.trace && !op.trace->scalar && !op.trace->mem.empty()) {
+        // 执行驱动：直接用踪迹中每个活跃元素的地址（索引/原子访存尤其需要）
+        std::map<unsigned, uint64_t> addrOf(op.trace->mem.begin(), op.trace->mem.end());
+        for (unsigned i = k * r; i < std::min<unsigned>((k + 1) * r, lo.chunks.size()); ++i)
+            for (unsigned e = lo.chunks[i].first; e < lo.chunks[i].second; ++e) {
+                auto it = addrOf.find(e);
+                if (it == addrOf.end()) continue;
+                for (unsigned j = 0; j <= ins.seglen; ++j) {
+                    uint64_t a = it->second + uint64_t(j) * ins.elsize;
+                    for (uint64_t x = a; x < a + ins.elsize; x += tb) addElem(x, e);
+                    if ((a + ins.elsize - 1) / tb != a / tb) addElem(a + ins.elsize - 1, e);
+                }
+            }
+        return out;
+    }
     if (ins.mode == Mode::Unit || ins.mode == Mode::Stride) {
         uint64_t step = op.strideBytes;
         for (unsigned i = k * r; i < std::min<unsigned>((k + 1) * r, lo.chunks.size()); ++i)
             for (unsigned e = lo.chunks[i].first; e < lo.chunks[i].second; ++e)
                 for (unsigned j = 0; j <= ins.seglen; ++j) {
+                    if (!op.activeAt(e)) continue;
                     uint64_t a = op.base + uint64_t(e) * step + uint64_t(j) * ins.elsize;
                     if (ins.mode == Mode::Unit) { for (uint64_t x = a; x < a + ins.elsize; x += tb) addElem(x, e); if ((a + ins.elsize - 1) / tb != a / tb) addElem(a + ins.elsize - 1, e); }
                     else addElem(a, e);

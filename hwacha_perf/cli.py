@@ -12,6 +12,7 @@ from .config import load_configs, dump_configs
 from .program import load_kernel
 from .sim import Simulator
 from .analytic import analyze
+from .trace import load_trace
 
 
 def _parse_sets(items: list[str]) -> tuple[dict, dict]:
@@ -42,10 +43,23 @@ def _configs(args):
     return load_configs(getattr(args, 'config', None), hw, mem)
 
 
+def _trace_arg(args):
+    if not getattr(args, 'trace', None):
+        return None
+    lo, hi = 0, 1 << 64
+    if args.trace_range:
+        lo, hi = (int(x, 16) for x in args.trace_range.split(':'))
+    blocks = tuple(int(x) for x in args.trace_blocks.split(':')) if args.trace_blocks else None
+    t = load_trace(args.trace, lo, hi, blocks)
+    if not t:
+        raise SystemExit('trace contains no vf blocks in range')
+    return t
+
+
 def cmd_run(args):
     k = load_kernel(args.kernel)
     cfg, mcfg = _configs(args)
-    sim = Simulator(k, cfg, mcfg, n=args.n)
+    sim = Simulator(k, cfg, mcfg, n=args.n, trace=_trace_arg(args))
     st = sim.run()
     if args.json:
         print(json.dumps(st.to_dict(), indent=2))
@@ -110,6 +124,9 @@ def main(argv=None):
         p.add_argument('--set', action='append', default=[], metavar='KEY=VAL',
                        help='覆盖参数，例如 n_seq_entries=16 或 mem.dram_latency=80')
         p.add_argument('--json', action='store_true')
+        p.add_argument('--trace', default=None, help='Spike 指令级踪迹（scripts/hwacha_trace.py run）')
+        p.add_argument('--trace-range', default=None, help='vf 块起始 pc 范围 lo:hi（十六进制）')
+        p.add_argument('--trace-blocks', default=None, help='只用第 a..b 个块，a:b')
 
     p = sub.add_parser('run'); p.add_argument('kernel'); common(p)
     p.add_argument('--bounds', action='store_true', help='同时打印解析式下界')

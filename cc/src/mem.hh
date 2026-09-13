@@ -83,6 +83,7 @@ public:
         unsigned widthBytes = 16;
         unsigned interleaveBytes = 64;
         Cycles frontendLatency = 0;
+        double switchPenalty = 0;       // 连续请求来自不同源端口时的额外占用（可为分数，按累计信用折算成整拍）
     };
     Xbar(std::string name, Tick period, P p);
     ResponsePort &cpuSide(int i) { return *_cpu[i]; }
@@ -96,6 +97,8 @@ public:
         int retryPort = -1;
         sim::EventFunctionWrapper *release = nullptr;
         Tick busyUntil = 0;
+        int lastSrc = -1;
+        double credit = 0;
         std::function<void(int)> sendRetry;
     };
 private:

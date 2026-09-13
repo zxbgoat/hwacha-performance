@@ -136,7 +136,7 @@ def parse_kernel(text: str, path: str = '') -> Kernel:
             continue
         if not line:
             continue
-        m = re.match(r'^([A-Za-z_]\w*):\s*(.*)$', line)
+        m = re.match(r'^(\.?[A-Za-z_]\w*):\s*(.*)$', line)
         if m:
             k.labels[m.group(1)] = len(k.instrs)
             line = m.group(2)

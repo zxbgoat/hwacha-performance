@@ -1,0 +1,24 @@
+N=1024
+RESULT hcc_saxpy 1640 cycles 1024 elems
+RESULT hcc_saxpy_warm 1011 cycles 1024 elems
+RESULT hcc_saxpy_warm2 875 cycles 1024 elems
+RESULT hand_saxpy 1367 cycles 1024 elems
+RESULT hand_saxpy_warm 991 cycles 1024 elems
+RESULT hand_saxpy_warm2 875 cycles 1024 elems
+RESULT hcc_clamp 1049 cycles 1024 elems
+RESULT hcc_clamp_warm 779 cycles 1024 elems
+RESULT hcc_clamp_warm2 734 cycles 1024 elems
+RESULT hand_clamp 1039 cycles 1024 elems
+RESULT hand_clamp_warm 779 cycles 1024 elems
+RESULT hand_clamp_warm2 736 cycles 1024 elems
+RESULT hcc_divloop 17278 cycles 1024 elems
+RESULT hcc_divloop_warm 16814 cycles 1024 elems
+RESULT hcc_divloop_warm2 16711 cycles 1024 elems
+RESULT hcc_stencil 1822 cycles 1024 elems
+RESULT hcc_stencil_warm 1487 cycles 1024 elems
+RESULT hcc_stencil_warm2 1441 cycles 1024 elems
+RESULT hcc_gather 2238 cycles 1024 elems
+RESULT hcc_gather_warm 1781 cycles 1024 elems
+RESULT hcc_gather_warm2 1688 cycles 1024 elems
+ALL VERIFIED
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

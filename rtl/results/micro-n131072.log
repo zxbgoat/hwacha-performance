@@ -1,0 +1,5 @@
+N=131072
+RESULT micro_empty 16497 cycles 131072 elems
+RESULT micro_empty_warm 16416 cycles 131072 elems
+RESULT micro_load 171801 cycles 131072 elems
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

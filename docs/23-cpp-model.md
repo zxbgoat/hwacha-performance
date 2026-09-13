@@ -44,7 +44,7 @@ ctest --output-on-failure            # memtest（存储系统）+ kernels（全�
     --set mem.dram_tRCD=20 --set mem.l2_trackers_per_bank=32
 ```
 
-`--stats` 输出所有 SimObject 注册的统计（交叉开关、每个 L2 bank、每个 DRAM 通道），`--json` 输出与 Python 模型同名的汇总字段，便于脚本比较。
+`--trace <spike-trace> [--trace-range lo:hi] [--trace-blocks a:b]` 切换到执行驱动（见 `docs/24-rtl-calibration.md` 8.1 节）。`--stats` 输出所有 SimObject 注册的统计（交叉开关、每个 L2 bank、每个 DRAM 通道），`--json` 输出与 Python 模型同名的汇总字段，便于脚本比较。
 
 存储系统参数键名与 Python 的 `MemoryConfig` 一致（`l2_banks`、`l2_bytes_per_bank`、`l2_ways`、`l2_hit_latency`、`l2_trackers_per_bank`、`dram_channels`、`tlb_entries`、`tlb_miss_latency`、`l2_supports_amo`），另加 DRAM 时序键：`dram_tck_ps`（默认 1072，LPDDR3-1866）、`dram_banks`、`dram_row_bytes`、`dram_burst_bytes`、`dram_tRCD`、`dram_tRP`、`dram_tRAS`、`dram_tRC`、`dram_tCL`、`dram_tCWL`、`dram_tBURST`、`dram_tCCD`、`dram_tRTP`、`dram_tWR`、`dram_tWTR`、`dram_tRTW`、`dram_tRRD`、`dram_tFAW`、`dram_tREFI`、`dram_tRFC`、`dram_frontend_latency`、`dram_backend_latency`、`dram_read_queue`、`dram_write_queue`（单位 tCK）。Python 模型的 `dram_latency` / `dram_bytes_per_cycle_per_channel` 在 C++ 中不再使用，带宽由 tCK 与 burst 推出（LPDDR3-1866 ×32 每通道约 7.46 B/ns）。
 

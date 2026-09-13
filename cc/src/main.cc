@@ -1,12 +1,13 @@
 // hwacha-sim：gem5 风格事件驱动的 Hwacha 周期级性能模型
 #include "hwacha.hh"
+#include "trace.hh"
 #include <cstring>
 #include <iostream>
 
 using namespace sim;
 
 static void usage() {
-    std::cerr << "usage: hwacha-sim run <kernel.S> [--n N] [--lanes L] [--config cfg.json] [--set key=val]... [--json] [--stats]\n"
+    std::cerr << "usage: hwacha-sim run <kernel.S> [--n N] [--lanes L] [--config cfg.json] [--set key=val]... [--trace spike.log [--trace-range lo:hi]] [--json] [--stats]\n"
                  "  --set 前缀 mem. 表示存储系统参数（如 mem.l2_banks=4 mem.dram_tck_ps=1072）\n";
 }
 
@@ -16,6 +17,7 @@ int main(int argc, char **argv) {
     Params hwP, memP;
     int64_t nOverride = -1;
     bool json = false, dumpStats = false;
+    std::string tracePath; uint64_t traceLo = 0, traceHi = ~0ull; size_t traceB0 = 0, traceB1 = ~size_t(0);
     for (int i = 3; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) fatal("missing value for " + a); return argv[++i]; };
@@ -30,6 +32,13 @@ int main(int argc, char **argv) {
             if (eq == std::string::npos) fatal("bad --set " + kv);
             std::string k = kv.substr(0, eq), v = kv.substr(eq + 1);
             if (k.rfind("mem.", 0) == 0) memP.set(k.substr(4), v); else hwP.set(k, v);
+        } else if (a == "--trace") tracePath = next();
+        else if (a == "--trace-range") {
+            std::string r = next(); auto c = r.find(':');
+            traceLo = std::stoull(r.substr(0, c), nullptr, 16); traceHi = std::stoull(r.substr(c + 1), nullptr, 16);
+        } else if (a == "--trace-blocks") {
+            std::string r = next(); auto c = r.find(':');
+            traceB0 = std::stoul(r.substr(0, c)); traceB1 = std::stoul(r.substr(c + 1));
         } else if (a == "--json") json = true;
         else if (a == "--stats") dumpStats = true;
         else if (a == "--quiet") verboseWarn = false;
@@ -72,10 +81,33 @@ int main(int argc, char **argv) {
     if (memP.has("page_bytes")) hp.pageBytes = (unsigned)memP.getInt("page_bytes", hp.pageBytes);
 
     // ---- 构建系统 ----
-    auto *hwacha = new hw::Hwacha("hwacha", hp, kernel, n, lineBytes);
-    unsigned nCpuPorts = hp.nLanes + (hp.buildVru ? 1 : 0);
+    hw::Trace trace;
+    const hw::Trace *tracePtr = nullptr;
+    if (!tracePath.empty()) {
+        trace = hw::Trace::load(tracePath, traceLo, traceHi);
+        if (traceB1 < trace.blocks.size()) trace.blocks.resize(traceB1);
+        if (traceB0 > 0) trace.blocks.erase(trace.blocks.begin(), trace.blocks.begin() + std::min(traceB0, trace.blocks.size()));
+        if (trace.blocks.empty()) fatal("trace contains no vf blocks in range");
+        tracePtr = &trace;
+        // 执行驱动时按踪迹决定迭代次数与元素数
+        uint64_t total = 0; for (auto &b : trace.blocks) total += b.vl;
+        if (nOverride < 0) n = total;
+    }
+    auto *hwacha = new hw::Hwacha("hwacha", hp, kernel, n, lineBytes, tracePtr);
+    unsigned nClients = hp.nLanes + (hp.buildVru ? 1 : 0);
+    // rocc_shared_port：所有 lane（与 VRU）经 RoCC 的单个 TileLink 端口进入系统总线（Chipyard 集成方式）；
+    // 否则每 lane 一个端口直接进入 L2 交叉开关（论文图 8.2）
+    bool sharedPort = memP.getBool("rocc_shared_port", false);
+    unsigned nCpuPorts = sharedPort ? 1 : nClients;
     mem::Xbar::P xp{(int)nCpuPorts, (int)l2Banks}; xp.widthBytes = hp.tlDataBytes; xp.interleaveBytes = lineBytes;
     auto *xbar = new mem::Xbar("system.l1_to_l2_xbar", corePeriod, xp);
+    mem::Xbar *roccXbar = nullptr;
+    if (sharedPort) {
+        mem::Xbar::P rp{(int)nClients, 1}; rp.widthBytes = hp.tlDataBytes; rp.interleaveBytes = 1u << 30;
+        rp.switchPenalty = memP.getDouble("rocc_switch_penalty", 0);
+        roccXbar = new mem::Xbar("system.rocc_port", corePeriod, rp);
+        roccXbar->memSide(0).bind(xbar->cpuSide(0));
+    }
     mem::Xbar::P mp{(int)l2Banks, (int)channels}; mp.widthBytes = 16; mp.interleaveBytes = lineBytes;
     auto *membus = new mem::Xbar("system.membus", corePeriod, mp);
     std::vector<mem::L2Bank *> l2s;
@@ -89,10 +121,15 @@ int main(int argc, char **argv) {
         auto *d = new mem::DRAMCtrl("system.dram.ch" + std::to_string(i), tCK, dp, i);
         membus->memSide((int)i).bind(d->port());
     }
-    for (unsigned l = 0; l < hp.nLanes; ++l) hwacha->lane((int)l).port().bind(xbar->cpuSide((int)l));
-    if (hp.buildVru) hwacha->vru()->port().bind(xbar->cpuSide((int)hp.nLanes));
+    mem::Xbar *clientXbar = sharedPort ? roccXbar : xbar;
+    for (unsigned l = 0; l < hp.nLanes; ++l) hwacha->lane((int)l).port().bind(clientXbar->cpuSide((int)l));
+    if (hp.buildVru) hwacha->vru()->port().bind(clientXbar->cpuSide((int)hp.nLanes));
     for (auto *o : SimObject::all()) o->regStats();
-    if (memP.getBool("warm_l2", false)) {
+    if (memP.getBool("warm_l2", false) && tracePtr) {
+        // 执行驱动：预热踪迹中所有访存触及的行
+        for (auto &b : trace.blocks) for (auto &ti : b.instrs) for (auto &[ut, addr] : ti.mem)
+            l2s[xbar->route(addr)]->installLine(addr, true);
+    } else if (memP.getBool("warm_l2", false)) {
         // 预热规则：被 va 指针引用的数组预热到 (n + offset + 16) 个元素 × 步长；仅被索引访存引用的数组整体预热
         for (auto &[name, arr] : kernel.arrays) {
             uint64_t bytes = 0; bool referenced = false;

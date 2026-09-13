@@ -19,7 +19,7 @@ VMEM_RE = re.compile(r'^v(l|s)(seg)?(st|x)?(b|h|w|d)(u)?$')
 SMEM_RE = re.compile(r'^v(l|s)(a|s)(b|h|w|d)(u)?$')
 AMO_RE = re.compile(r'^vamo(swap|add|and|or|xor|min|max|minu|maxu)\.([wd])$')
 PLU_RE = re.compile(r'^vp(op|clear|set|(?:xor|or|and)(?:xor|or|and))$')
-BR_RE = re.compile(r'^vcjal(r)?\.(all|any)$')
+BR_RE = re.compile(r'^vcjal(r)?(?:\.(all|any))?$')
 
 ALU_SET = {'vadd', 'vaddu', 'vsub', 'vsll', 'vsrl', 'vsra', 'vand', 'vor', 'vxor',
            'vslt', 'vsltu', 'veidx', 'vaddw', 'vsubw', 'vsllw', 'vsrlw', 'vsraw'}
@@ -155,7 +155,8 @@ def _classify(ins: Instr) -> None:
     m = BR_RE.match(mn)
     if m:
         ins.kind = 'branch'
-        ins.dst = ops[0] if ops else None
+        first = 1 if (not m.group(2) and len(ops) >= 3) else 0   # hwacha-cc 写法：vcjal <cond>, sd, label
+        ins.dst = ops[first] if ops else None
         ins.label = ops[-1]
         ins.is_vector = True
         ins.slots = SLOTS['branch']
