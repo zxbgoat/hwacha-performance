@@ -1,0 +1,21 @@
+N=4096
+RESULT vvadd 8965 cycles 4096 elems
+RESULT vvadd_warm 8915 cycles 4096 elems
+RESULT vvadd_warm2 8322 cycles 4096 elems
+RESULT saxpy 5383 cycles 4096 elems
+RESULT saxpy_warm 5399 cycles 4096 elems
+RESULT saxpy_warm2 5020 cycles 4096 elems
+RESULT daxpy 8876 cycles 4096 elems
+RESULT daxpy_warm 8999 cycles 4096 elems
+RESULT daxpy_warm2 8290 cycles 4096 elems
+RESULT csaxpy 6086 cycles 4096 elems
+RESULT csaxpy_warm 5947 cycles 4096 elems
+RESULT csaxpy_warm2 5329 cycles 4096 elems
+RESULT sfilter 6502 cycles 4096 elems
+RESULT sfilter_warm 6250 cycles 4096 elems
+RESULT sfilter_warm2 5798 cycles 4096 elems
+[9828309000] %Error: IBoxML.sv:264: Assertion failed in TOP.TestDriver.testHarness.chiptop0.system.tile_prci_domain.element_reset_domain_rockettile.hwacha.vus_1.vmuInst.iboxInst._agent_agentInst: Assertion failed: IBox: qcntr too large. aret broken
+    at vmu.scala:265 assert(qcntr <= UInt(1), "IBox: qcntr too large. aret broken")
+
+%Error: /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL2RocketConfig/gen-collateral/IBoxML.sv:264: Verilog $stop
+Aborting...

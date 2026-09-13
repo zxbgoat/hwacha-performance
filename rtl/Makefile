@@ -60,3 +60,9 @@ probe5.riscv: probe5.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
 	$(CC) $(CFLAGS) -o $@ probe5.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c $(LDFLAGS)
 probe5-rtl: probe5.riscv
 	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/probe5.log
+
+# 2 lane RTL：跳过会触发 IBoxML 断言的 gather
+bench-nogather-n$(N).riscv: main.c kernels.S ../kernels/*.S $(COMMON)/crt.S $(COMMON)/syscalls.c
+	$(CC) $(CFLAGS) -DN=$(N) -DNO_GATHER -o $@ main.c kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c $(LDFLAGS)
+rtl-nogather: bench-nogather-n$(N).riscv
+	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/rtl-nogather-n$(N)$(LOGTAG).log

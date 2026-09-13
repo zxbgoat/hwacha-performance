@@ -171,11 +171,23 @@ Python 模型与 C++ 模型在这些内核上相差不到 0.1%。计算侧（ALU
 | micro_copy | 4604 | 5735 | 5357 | −6.6% |
 | micro_ldst | 4602 | 5761 | 5357 | −7.0% |
 
+全部内核在 2 lane RTL 上的运行在 gather 处被 RTL 自己的断言终止（`vmu.scala:265`，`IBox: qcntr too large. aret broken`，多 lane 的 `IBoxML` 处理索引访存时触发），这证实了 hwacha-compiler 工程日志里"多 lane 配置未验证"的说法：开源 RTL 的 2 lane 只能跑单位/常量步长访存。gather 之前的 5 个内核（稳态，`rtl/results/rtl-n4096-l2.log`）：
+
+| kernel | 1 lane RTL | 2 lane RTL | 2 lane 模型 | 误差 |
+|---|---|---|---|---|
+| vvadd | 6646 | 8322 | 8020 | −3.6% |
+| daxpy | 6752 | 8290 | 8020 | −3.3% |
+| csaxpy | 3887 | 5329 | 4694 | −11.9% |
+| saxpy | 3283 | 5020 | 4029 | −19.7% |
+| sfilter | 5306 | 5798 | 6727 | +16.0% |
+
+双精度流式内核 2 lane 慢 25%，模型跟得上；单精度内核（saxpy、csaxpy）2 lane 慢 37%–53%，模型只解释了一半。单精度时每个 lane 的单位步长段只有 32 字节（8 个元素），两个 lane 交替写同一个 64 字节行的两半，可能是 InclusiveCache 对同一行交错部分写的额外代价。dgemm_opt 与 fma_peak 的 2 lane 数据用 `make rtl-nogather`（跳过 gather）单独获取。
+
 计算侧随 lane 数线性扩展（8224 → 4129），模型一致。**访存侧 2 lane 反而比 1 lane 慢**（load 2149 → 2662，store 2456 → 3206）：Chipyard 集成里所有 lane 的 VMU 经 `TLWidthWidget(16)` 汇入 RoCC 的同一个 TileLink 节点，再经 tile 的主交叉开关进入 sbus，两个 lane 争用一个 128 位端口，仲裁还带来约每 beat 0.3 拍的额外开销；论文中每 lane 有独立的 L2 端口。模型新增 `rocc_shared_port`（所有 lane 与 VRU 汇入一个端口）与 `rocc_switch_penalty`（源切换的分数周期，按信用折算），RTL 配置取 true / 0.3。这意味着在开源集成上，多 lane 只对计算受限内核有意义。
 
 ### 8.5 当前误差汇总（C++ 模型，`store_beat_cycles` 1.15）
 
-单 lane 8 个内核 + 10 个微基准：平均 2.5%，最大 8.0%（sfilter）。2 lane 微基准：平均 6.0%，最大 15.9%（store）。hwacha-cc 内核（踪迹驱动）：4 个在 3%–7%，divloop −12%。
+单 lane 8 个内核 + 10 个微基准：平均 2.5%，最大 8.0%（sfilter）。2 lane 微基准：平均 6.0%，最大 15.9%（store）；2 lane 流式内核：双精度 ±4%，单精度 −12%～−20%。hwacha-cc 内核（踪迹驱动）：4 个在 3%–7%，divloop −12%。
 
 ## 9. 下一步
 

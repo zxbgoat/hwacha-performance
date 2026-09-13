@@ -120,9 +120,11 @@ int main(void) {
   for (int i = 0; i < N; i++) { reff[i] = 0.25f * srcf[i] + 0.5f * srcf[i + 1] + 0.25f * srcf[i + 2]; dstf[i] = -1; }
   TIME("sfilter", run_sfilter(N, srcf, dstf, 0.25f, 0.5f, 0.25f), (fail |= verify_f("sfilter", dstf, reff, N)));
 
+#ifndef NO_GATHER   /* 2 lane RTL 的 IBoxML 在索引访存上触发断言（vmu.scala:265），可用 -DNO_GATHER 跳过 */
   for (int i = 0; i < 4096; i++) table[i] = frand();
   for (int i = 0; i < N; i++) { long k = ((long)i * 7919) % 4096; idx[i] = k * 8; refd[i] = table[k]; outd[i] = -1; }
   TIME("gather", run_gather(N, idx, table, outd), (fail |= verify_d("gather", outd, refd, N)));
+#endif
 
   for (int i = 0; i < 16384; i++) Bmat[i] = frand();
   TIME("dgemm_opt", run_dgemm(N, Bmat), 0);
