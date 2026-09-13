@@ -1,0 +1,128 @@
+// hwacha-sim：gem5 风格事件驱动的 Hwacha 周期级性能模型
+#include "hwacha.hh"
+#include <cstring>
+#include <iostream>
+
+using namespace sim;
+
+static void usage() {
+    std::cerr << "usage: hwacha-sim run <kernel.S> [--n N] [--lanes L] [--config cfg.json] [--set key=val]... [--json] [--stats]\n"
+                 "  --set 前缀 mem. 表示存储系统参数（如 mem.l2_banks=4 mem.dram_tck_ps=1072）\n";
+}
+
+int main(int argc, char **argv) {
+    if (argc < 3 || std::strcmp(argv[1], "run") != 0) { usage(); return 1; }
+    std::string kernelPath = argv[2];
+    Params hwP, memP;
+    int64_t nOverride = -1;
+    bool json = false, dumpStats = false;
+    for (int i = 3; i < argc; ++i) {
+        std::string a = argv[i];
+        auto next = [&]() -> std::string { if (i + 1 >= argc) fatal("missing value for " + a); return argv[++i]; };
+        if (a == "--n") nOverride = std::stoll(next());
+        else if (a == "--lanes") hwP.set("n_lanes", next());
+        else if (a == "--config") {
+            Json j = Json::parseFile(next());
+            if (auto *h = j.get("hwacha")) hwP.loadJson(*h);
+            if (auto *m = j.get("memory")) memP.loadJson(*m);
+        } else if (a == "--set") {
+            std::string kv = next(); auto eq = kv.find('=');
+            if (eq == std::string::npos) fatal("bad --set " + kv);
+            std::string k = kv.substr(0, eq), v = kv.substr(eq + 1);
+            if (k.rfind("mem.", 0) == 0) memP.set(k.substr(4), v); else hwP.set(k, v);
+        } else if (a == "--json") json = true;
+        else if (a == "--stats") dumpStats = true;
+        else if (a == "--quiet") verboseWarn = false;
+        else { usage(); return 1; }
+    }
+
+    hw::Kernel kernel = hw::loadKernel(kernelPath);
+    hw::HwachaParams hp = hw::HwachaParams::from(hwP);
+    uint64_t n = nOverride >= 0 ? (uint64_t)nOverride : kernel.n;
+    Tick corePeriod = hp.period();
+
+    // ---- 存储系统参数（键名与 Python 模型的 MemoryConfig 一致，另加 DRAM 时序键） ----
+    unsigned l2Banks = (unsigned)memP.getInt("l2_banks", 4);
+    unsigned lineBytes = (unsigned)memP.getInt("line_bytes", 64);
+    mem::L2Bank::P lp;
+    lp.sizeBytes = (unsigned)memP.getInt("l2_bytes_per_bank", 256 * 1024);
+    lp.ways = (unsigned)memP.getInt("l2_ways", 8);
+    lp.lineBytes = lineBytes;
+    unsigned hitLat = (unsigned)memP.getInt("l2_hit_latency", 24);
+    lp.tagLatency = (unsigned)memP.getInt("l2_tag_latency", hitLat / 2);
+    lp.dataLatency = (unsigned)memP.getInt("l2_data_latency", hitLat - lp.tagLatency);
+    lp.mshrs = (unsigned)memP.getInt("l2_trackers_per_bank", 16);
+    lp.supportsAtomics = memP.getBool("l2_supports_amo", true);
+    unsigned channels = (unsigned)memP.getInt("dram_channels", 2);
+    mem::DRAMCtrl::P dp;
+    dp.nChannels = channels; dp.lineBytes = lineBytes; dp.channelInterleave = lineBytes;
+    dp.banks = (unsigned)memP.getInt("dram_banks", 8);
+    dp.rowBytes = (unsigned)memP.getInt("dram_row_bytes", 4096);
+    dp.burstBytes = (unsigned)memP.getInt("dram_burst_bytes", 32);
+    Tick tCK = (Tick)memP.getInt("dram_tck_ps", 1072);
+    auto T = [&](const char *k, unsigned &f) { f = (unsigned)memP.getInt(k, f); };
+    T("dram_tRCD", dp.tRCD); T("dram_tRP", dp.tRP); T("dram_tRAS", dp.tRAS); T("dram_tRC", dp.tRC); T("dram_tCL", dp.tCL);
+    T("dram_tCWL", dp.tCWL); T("dram_tBURST", dp.tBURST); T("dram_tCCD", dp.tCCD); T("dram_tRTP", dp.tRTP); T("dram_tWR", dp.tWR);
+    T("dram_tWTR", dp.tWTR); T("dram_tRTW", dp.tRTW); T("dram_tRRD", dp.tRRD); T("dram_tFAW", dp.tFAW); T("dram_tREFI", dp.tREFI);
+    T("dram_tRFC", dp.tRFC); T("dram_frontend_latency", dp.frontendLatency); T("dram_backend_latency", dp.backendLatency);
+    T("dram_read_queue", dp.readQueue); T("dram_write_queue", dp.writeQueue);
+    // 让 tlb/page 参数对两个模型保持同名
+    if (memP.has("tlb_entries")) hp.tlbEntries = (unsigned)memP.getInt("tlb_entries", hp.tlbEntries);
+    if (memP.has("tlb_miss_latency")) hp.tlbMissLatency = (unsigned)memP.getInt("tlb_miss_latency", hp.tlbMissLatency);
+    if (memP.has("page_bytes")) hp.pageBytes = (unsigned)memP.getInt("page_bytes", hp.pageBytes);
+
+    // ---- 构建系统 ----
+    auto *hwacha = new hw::Hwacha("hwacha", hp, kernel, n, lineBytes);
+    unsigned nCpuPorts = hp.nLanes + (hp.buildVru ? 1 : 0);
+    mem::Xbar::P xp{(int)nCpuPorts, (int)l2Banks}; xp.widthBytes = hp.tlDataBytes; xp.interleaveBytes = lineBytes;
+    auto *xbar = new mem::Xbar("system.l1_to_l2_xbar", corePeriod, xp);
+    mem::Xbar::P mp{(int)l2Banks, (int)channels}; mp.widthBytes = 16; mp.interleaveBytes = lineBytes;
+    auto *membus = new mem::Xbar("system.membus", corePeriod, mp);
+    for (unsigned i = 0; i < l2Banks; ++i) {
+        auto *b = new mem::L2Bank("system.l2.bank" + std::to_string(i), corePeriod, lp);
+        xbar->memSide((int)i).bind(b->cpuSide());
+        b->memSide().bind(membus->cpuSide((int)i));
+    }
+    for (unsigned i = 0; i < channels; ++i) {
+        auto *d = new mem::DRAMCtrl("system.dram.ch" + std::to_string(i), tCK, dp, i);
+        membus->memSide((int)i).bind(d->port());
+    }
+    for (unsigned l = 0; l < hp.nLanes; ++l) hwacha->lane((int)l).port().bind(xbar->cpuSide((int)l));
+    if (hp.buildVru) hwacha->vru()->port().bind(xbar->cpuSide((int)hp.nLanes));
+
+    for (auto *o : SimObject::all()) o->regStats();
+    for (auto *o : SimObject::all()) o->startup();
+    auto &eq = mainEventQueue();
+    while (!hwacha->done()) {
+        if (!eq.serviceOne()) fatal("event queue empty before completion");
+    }
+
+    if (json) {
+        std::cout << hwacha->reportJson();
+        if (dumpStats) stats::registry().dumpJson(std::cout);
+    } else {
+        std::cout << "kernel: " << kernel.name << "   lanes=" << hp.nLanes << " vru=" << (hp.buildVru ? "true" : "false")
+                  << " conf_prec=" << (hp.confPrec ? "true" : "false") << "  (events " << eq.numEvents << ")\n";
+        std::cout << hwacha->reportText();
+        // 汇总 L2 / DRAM
+        double hits = 0, misses = 0, mshrHits = 0, pf = 0, pfUsed = 0, wb = 0, rd = 0, wr = 0, rowHit = 0, rowMiss = 0, rlat = 0;
+        for (auto *s : stats::registry().all) {
+            auto ends = [&](const char *suf) { return s->name.size() >= std::strlen(suf) && s->name.compare(s->name.size() - std::strlen(suf), std::strlen(suf), suf) == 0; };
+            if (s->name.rfind("system.l2", 0) == 0) {
+                if (ends(".hits")) hits += s->value(); else if (ends(".misses")) misses += s->value();
+                else if (ends(".mshr_hits")) mshrHits += s->value(); else if (ends(".prefetches")) pf += s->value();
+                else if (ends(".prefetch_used")) pfUsed += s->value(); else if (ends(".writebacks")) wb += s->value();
+            } else if (s->name.rfind("system.dram", 0) == 0) {
+                if (ends(".reads")) rd += s->value(); else if (ends(".writes")) wr += s->value();
+                else if (ends(".row_hits")) rowHit += s->value(); else if (ends(".row_misses")) rowMiss += s->value();
+                else if (ends(".tot_read_latency_ticks")) rlat += s->value();
+            }
+        }
+        std::cout << "L2: hits " << hits << ", misses " << misses << ", mshr-hits " << mshrHits << ", prefetches " << pf
+                  << " (used " << pfUsed << "), writebacks " << wb << "\n";
+        std::cout << "DRAM: reads " << rd << ", writes " << wr << ", row hits " << rowHit << ", row misses " << rowMiss
+                  << ", avg read latency " << (rd > 0 ? rlat / rd / corePeriod : 0) << " cycles\n";
+        if (dumpStats) { std::cout << "\n---- stats ----\n"; stats::registry().dump(std::cout); }
+    }
+    return 0;
+}

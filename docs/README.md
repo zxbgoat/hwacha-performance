@@ -53,4 +53,5 @@
 - [19-toolchain-and-usage.md](19-toolchain-and-usage.md) — 工具链、Chipyard 集成、测试与仿真
 - [20-history-references.md](20-history-references.md) — 谱系、历史与外部资源清单
 - [21-glossary.md](21-glossary.md) — 术语与缩写表
-- [22-performance-model.md](22-performance-model.md) — 性能模型：抽象层次、建模机制、内核格式、验证结果与局限
+- [22-performance-model.md](22-performance-model.md) — Python 性能模型：抽象层次、建模机制、内核格式、验证结果与局限
+- [23-cpp-model.md](23-cpp-model.md) — C++ 事件驱动周期级模型（gem5 风格）：框架、精度提升、与 Python 模型的对比

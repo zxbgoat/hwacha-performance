@@ -3,7 +3,8 @@
 UC Berkeley Hwacha 解耦向量取指加速器的文档集与性能模型。
 
 - `docs/`：设计思想、编程模型、ISA、整体架构、微架构与各子模块文档（从 `docs/README.md` 进入）
-- `hwacha_perf/`：strip 粒度的周期级性能模拟器 + 解析式上下界模型（说明见 `docs/22-performance-model.md`）
+- `hwacha_perf/`：Python 版 strip 粒度性能模拟器 + 解析式上下界模型（说明见 `docs/22-performance-model.md`）
+- `cc/`：C++ 版 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；说明见 `docs/23-cpp-model.md`）
 - `kernels/`：用 Hwacha 汇编写的示例内核（vvadd、saxpy、daxpy、csaxpy、dgemm 分块、模板滤波、gather、FMA 峰值）
 - `configs/`：论文评估配置、开源主线配置、混合精度配置、理想内存配置
 - `tests/`：pytest 回归测试
@@ -20,6 +21,10 @@ hwacha-perf run kernels/saxpy.S --config configs/paper-28nm-mxp.json
 hwacha-perf run kernels/vvadd.S --set n_seq_entries=16 --set mem.dram_latency=80 --json
 python3 scripts/summary.py --n 16384
 python3 -m pytest -q
+
+# C++ 模型
+cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest
+./hwacha-sim run ../../kernels/daxpy.S --n 65536 --json
 ```
 
 ## 内核文件格式
