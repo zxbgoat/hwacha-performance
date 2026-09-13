@@ -181,9 +181,20 @@ Python 模型与 C++ 模型在这些内核上相差不到 0.1%。计算侧（ALU
 | saxpy | 3283 | 5020 | 4029 | −19.7% |
 | sfilter | 5306 | 5798 | 6727 | +16.0% |
 
-双精度流式内核 2 lane 慢 25%，模型跟得上；单精度内核（saxpy、csaxpy）2 lane 慢 37%–53%，模型只解释了一半。单精度时每个 lane 的单位步长段只有 32 字节（8 个元素），两个 lane 交替写同一个 64 字节行的两半，可能是 InclusiveCache 对同一行交错部分写的额外代价。dgemm_opt 与 fma_peak 的 2 lane 数据用 `make rtl-nogather`（跳过 gather）单独获取。
+双精度流式内核 2 lane 慢 25%，模型跟得上；单精度内核（saxpy、csaxpy）2 lane 慢 37%–53%，模型只解释了一半。单精度时每个 lane 的单位步长段只有 32 字节（8 个元素），两个 lane 交替写同一个 64 字节行的两半，可能是 InclusiveCache 对同一行交错部分写的额外代价。
 
-计算侧随 lane 数线性扩展（8224 → 4129），模型一致。**访存侧 2 lane 反而比 1 lane 慢**（load 2149 → 2662，store 2456 → 3206）：Chipyard 集成里所有 lane 的 VMU 经 `TLWidthWidget(16)` 汇入 RoCC 的同一个 TileLink 节点，再经 tile 的主交叉开关进入 sbus，两个 lane 争用一个 128 位端口，仲裁还带来约每 beat 0.3 拍的额外开销；论文中每 lane 有独立的 L2 端口。模型新增 `rocc_shared_port`（所有 lane 与 VRU 汇入一个端口）与 `rocc_switch_penalty`（源切换的分数周期，按信用折算），RTL 配置取 true / 0.3。这意味着在开源集成上，多 lane 只对计算受限内核有意义。
+跳过 gather 的第二次运行（`make rtl-nogather`，`rtl/results/rtl-nogather-n4096-l2.log`，数据布局随之改变）补上了计算受限内核，也暴露了布局敏感性：
+
+| kernel | 1 lane RTL | 2 lane RTL（第二次运行） | 2 lane 模型 | 误差 |
+|---|---|---|---|---|
+| fma_peak | 12309 | 6164 | 6200 | +0.6% |
+| dgemm_opt | 8403 | 4784 | 5712 | +19.4% |
+| csaxpy | 3887 | 3929（第一次运行 5329） | 4694 | +19.5% |
+| sfilter | 5306 | 5423（第一次运行 5798） | 6727 | +24.0% |
+
+fma_peak 精确地减半，模型一致。dgemm_opt 在 RTL 上达到 1.76× 扩展：它的两条 B 行 load 加起来每周期约 1.7 个 beat，**超过了一个 128 位端口的 1 beat/周期**，说明 2 lane 的访存瓶颈并不是 RoCC 端口本身，`rocc_shared_port` 的建模对 load 为主的内核过于悲观。同一个 csaxpy 在两次 2 lane 运行中相差 36%（5329 对 3929），只因为二进制里数组的位置不同，这与单 lane 下 store 吞吐随布局波动是同一类现象，且在 2 lane 下被放大。要真正解释它需要 TileLink 通道级或 InclusiveCache 内部的跟踪，目前只能把 2 lane 的访存侧标为"未校准"。
+
+计算侧随 lane 数线性扩展（8224 → 4129），模型一致。**访存侧 2 lane 反而比 1 lane 慢**（load 2149 → 2662，store 2456 → 3206）：Chipyard 集成里所有 lane 的 VMU 经 `TLWidthWidget(16)` 汇入 RoCC 的同一个 TileLink 节点，再经 tile 的主交叉开关进入 sbus，两个 lane 争用一个 128 位端口，仲裁还带来约每 beat 0.3 拍的额外开销；论文中每 lane 有独立的 L2 端口。模型新增 `rocc_shared_port`（所有 lane 与 VRU 汇入一个端口）与 `rocc_switch_penalty`（源切换的分数周期，按信用折算），RTL 配置取 true / 0.3。这意味着在开源集成上，多 lane 只对计算受限内核有明确收益；访存侧的行为随数据布局变化很大，尚未找到确定的机理。
 
 ### 8.5 当前误差汇总（C++ 模型，`store_beat_cycles` 1.15）
 
