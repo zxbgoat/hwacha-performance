@@ -7,7 +7,7 @@
 using namespace sim;
 
 static void usage() {
-    std::cerr << "usage: hwacha-sim run <kernel.S> [--n N] [--lanes L] [--config cfg.json] [--set key=val]... [--trace spike.log [--trace-range lo:hi]] [--json] [--stats]\n"
+    std::cerr << "usage: hwacha-sim run <kernel.S> [--n N] [--lanes L] [--config cfg.json] [--set key=val]... [--trace spike.log [--trace-range lo:hi] [--trace-base pc]] [--json] [--stats]\n"
                  "  --set 前缀 mem. 表示存储系统参数（如 mem.l2_banks=4 mem.dram_tck_ps=1072）\n";
 }
 
@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
     Params hwP, memP;
     int64_t nOverride = -1;
     bool json = false, dumpStats = false;
-    std::string tracePath; uint64_t traceLo = 0, traceHi = ~0ull; size_t traceB0 = 0, traceB1 = ~size_t(0);
+    std::string tracePath; uint64_t traceLo = 0, traceHi = ~0ull, traceBase = 0; size_t traceB0 = 0, traceB1 = ~size_t(0);
     for (int i = 3; i < argc; ++i) {
         std::string a = argv[i];
         auto next = [&]() -> std::string { if (i + 1 >= argc) fatal("missing value for " + a); return argv[++i]; };
@@ -36,7 +36,8 @@ int main(int argc, char **argv) {
         else if (a == "--trace-range") {
             std::string r = next(); auto c = r.find(':');
             traceLo = std::stoull(r.substr(0, c), nullptr, 16); traceHi = std::stoull(r.substr(c + 1), nullptr, 16);
-        } else if (a == "--trace-blocks") {
+        } else if (a == "--trace-base") traceBase = std::stoull(next(), nullptr, 16);
+        else if (a == "--trace-blocks") {
             std::string r = next(); auto c = r.find(':');
             traceB0 = std::stoul(r.substr(0, c)); traceB1 = std::stoul(r.substr(c + 1));
         } else if (a == "--json") json = true;
@@ -84,7 +85,7 @@ int main(int argc, char **argv) {
     hw::Trace trace;
     const hw::Trace *tracePtr = nullptr;
     if (!tracePath.empty()) {
-        trace = hw::Trace::load(tracePath, traceLo, traceHi);
+        trace = hw::Trace::load(tracePath, traceLo, traceHi, traceBase ? traceBase : traceLo);
         if (traceB1 < trace.blocks.size()) trace.blocks.resize(traceB1);
         if (traceB0 > 0) trace.blocks.erase(trace.blocks.begin(), trace.blocks.begin() + std::min(traceB0, trace.blocks.size()));
         if (trace.blocks.empty()) fatal("trace contains no vf blocks in range");

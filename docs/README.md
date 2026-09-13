@@ -56,3 +56,4 @@
 - [22-performance-model.md](22-performance-model.md) — Python 性能模型：抽象层次、建模机制、内核格式、验证结果与局限
 - [23-cpp-model.md](23-cpp-model.md) — C++ 事件驱动周期级模型（gem5 风格）：框架、精度提升、与 Python 模型的对比
 - [24-rtl-calibration.md](24-rtl-calibration.md) — 用 Chipyard/Verilator RTL 校准模型：测量程序、探针测得的微架构事实、修正与残余误差
+- [25-design-space.md](25-design-space.md) — 用校准后的模型做的设计空间研究：序列器/VMT 条目数、多 lane 的 L2 端口、VRU、lane 数

@@ -27,12 +27,18 @@ class TraceBlock:
     start_pc: int
     vl: int
     instrs: list = field(default_factory=list)
+    base_pc: Optional[int] = None     # 内核文件第一条指令对应的地址（多入口块时 != start_pc）
+
+    def index_of(self, pc: int) -> int:
+        return (pc - (self.base_pc if self.base_pc is not None else self.start_pc)) // 8
 
 
 _WT = re.compile(r'^H: WT pc=([0-9a-f]+) inst=([0-9a-f]+) next=([0-9a-f]+) vl=(\d+) act=(\S*)')
 
 
-def load_trace(path: str, lo: int = 0, hi: int = 1 << 64, blocks: Optional[tuple] = None) -> list[TraceBlock]:
+def load_trace(path: str, lo: int = 0, hi: int = 1 << 64, blocks: Optional[tuple] = None,
+               base: Optional[int] = None) -> list[TraceBlock]:
+    """base：内核文件第一条指令的地址；不给则每个块以自身起点为基址（单入口块）。"""
     out: list[TraceBlock] = []
     cur: Optional[TraceBlock] = None
     expect = None
@@ -54,7 +60,7 @@ def load_trace(path: str, lo: int = 0, hi: int = 1 << 64, blocks: Optional[tuple
                 act = m.group(5)
                 if cur is None or pc != expect:
                     flush()
-                    cur = TraceBlock(pc, vl)
+                    cur = TraceBlock(pc, vl, base_pc=base)
                 ti = TraceInstr(pc, inst, nxt, vl, act == '-')
                 if act != '-':
                     ti.active = [(int(act[i // 4], 16) >> (i % 4)) & 1 if i // 4 < len(act) else 0 for i in range(vl)]

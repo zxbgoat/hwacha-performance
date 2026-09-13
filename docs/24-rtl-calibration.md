@@ -200,10 +200,116 @@ fma_peak 精确地减半，模型一致。dgemm_opt 在 RTL 上达到 1.76× 扩
 
 单 lane 8 个内核 + 10 个微基准：平均 2.5%，最大 8.0%（sfilter）。2 lane 微基准：平均 6.0%，最大 15.9%（store）；2 lane 流式内核：双精度 ±4%，单精度 −12%～−20%。hwacha-cc 内核（踪迹驱动）：4 个在 3%–7%，divloop −12%。
 
+## 10. 第三轮：TileLink 通道级跟踪、数组对齐、IBoxML 修复、Rodinia、除法/开方与跨步访存
+
+### 10.1 TileLink 通道级跟踪（`+verbose +hwacha_tl_trace=1`）
+
+在 Chisel 里加了 PlusArg 门控的 printf：`hwacha/vmu-memif.scala` 的 `VMUTileLink` 打印每次 A/D 通道握手（周期、opcode、地址、source、握手前等待拍数），`rocket-chip-inclusive-cache/.../Scheduler.scala` 打印 L2 bank 内侧 A/D 与外侧 A/C/D 握手以及当时有效的 MSHR 数。Chisel printf 只在 `+verbose` 下输出，而 +verbose 同时打开 Rocket 的提交日志，仿真慢 30–50 倍，只能跑微基准。`scripts/tl_trace_stats.py` 按 RESULT 行切段统计（`rtl/results/tlv-micro-n4096.log`、`tlv-micro-n4096-l2.log`）。
+
+单 lane 微基准（N = 4096，稳态）在 VMU 的 A 通道上看到的：
+
+| kernel | A 请求数 | beats/拍 | A 等待均值 | 被阻塞的请求 | L2 MSHR 均值 |
+|---|---|---|---|---|---|
+| micro_load | 2048 Get | 0.993 | 0.01 | 0.7% | 1.2 |
+| micro_store | 2048 PutPartial | 0.941 | 0.06 | 3.6% | 5.3 |
+| micro_copy | 2048 Get + 2048 Put | 0.993 | 0.01 | 0.7% | 1.2 |
+| micro_load2 | 4096 Get | 0.993 | 0.01 | 0.7% | 1.2 |
+| micro_ldst | 2048 + 2048 | 0.923 | 0.08 | 3.3% | 7.1 |
+| micro_stld | 2048 + 2048 | 0.967 | 0.03 | 1.8% | 5.5 |
+
+L2 内侧 A→D 延迟：load 命中 4 拍；store（PutPartial）在纯 store 流里平均 15 拍（一行的第一拍 7 拍、后三拍 18 拍），在混合流里 22 拍。机制（`Scheduler.scala`）：InclusiveCache 每拍只接受一个请求；每个请求（命中也一样）要分配一个 MSHR，同一 set 已有 MSHR 时排到它后面等它 reload 后串行服务；PutPartial 要读-改-写数据阵列，占 MSHR 约 5 拍，Get 约 1 拍。所以 store 流会把 MSHR 用到 9–10 个（上限）并偶尔反压 A 通道，load 流几乎不会。这就是 store 每 beat 略多于 1 拍（模型里 `store_beat_cycles` 1.15）以及 store/load 混合略慢的来源；同 set 排队意味着相距 64 KB 整数倍的两条流会互相串行，是布局敏感性的另一个来源。
+
+2 lane（`tlv-micro-n4096-l2.log`）：两条 lane 按 64 B 交错访问（lane 0 取偶数行、lane 1 取奇数行），A 通道严格轮流、每拍恰好一个请求进入 L2（没有任何一拍出现两个握手），每个请求平均等 1.0 拍。也就是说 Chipyard 集成下所有 lane 共用 RoCC 的一条 128 位 TileLink 路径和单个 L2 bank，2 lane 的访存吞吐与 1 lane 完全相同（RTL：micro_load 2121 拍、micro_copy 4246 拍，与 1 lane 一致）。模型里 `l2_banks = 1`（每 bank 每拍一个请求）已经表达了这个限制，此前为拟合未对齐数据加的 `rocc_shared_port` / `rocc_switch_penalty` 近似已在两个 RTL 配置里关闭。
+
+### 10.2 数组 4 KB 对齐
+
+`rtl/main.c`、`rtl/micro.c` 的数组改为 `__attribute__((aligned(4096)))` 之后，2 lane 微基准与模型（关闭共享端口近似）的误差：
+
+| kernel | 2 lane RTL 稳态 | 模型 | 误差 |
+|---|---|---|---|
+| micro_load | 2121 | 2090 | −1.5% |
+| micro_store | 2232 | 2085 | −6.6% |
+| micro_copy | 4246 | 4134 | −2.6% |
+| micro_load2 | 4181 | 4139 | −1.0% |
+| micro_ldst / stld / inplace | 4188 / 4192 / 4187 | 4134 / 4139 / 4133 | −1.3% |
+| micro_alu / fma_dep | 4155 / 4131 | 4235 / 4238 | +1.9% / +2.6% |
+
+平均 3.7%（不含 micro_empty 的 −17%，它只有 319 拍）。之前 2 lane 微基准 15.9% 的 store 误差来自未对齐布局。
+
+### 10.3 IBoxML 断言（2 lane 索引访存）
+
+`vmu.scala` 的 `IBoxML` 用一个 2 位的 `qcntr` 记录 abox2 队列里本 op 还剩几个子操作、以此决定何时发 `aret`（通知 MRT 释放地址寄存器）；索引访存每拍入队一个子操作，计数溢出触发 `assert(qcntr <= 1)`。改为给每个子操作打 `last` 标记（`VMUDecodedOp.last`），abox2 取走带 last 的子操作时发 `aret`，去掉 `qcntr`/`aret_pending`。修复后的 2 lane 仿真器能跑完含 gather 的完整基准（结果见 10.6）。
+
+### 10.4 多入口 vf 块的踪迹映射与 Rodinia 内核
+
+hwacha-cc 为一个 OpenCL 内核生成多个入口（`*_wt`、`*_wt_r0_b*`、`*_wt_a0`），控制线程按块调用。两个模型的 `--trace-base <pc>`（默认取 `--trace-range` 的下界）把踪迹 pc 减去内核文件第一条指令的地址得到指令序号，于是一个内核文件可以按原地址顺序连续放下全部入口块。`scripts/extract_hcc_kernel.py` 从 hwacha-cc 的 `.s` 抠出整个 `_wt` 区域并生成注解（寄存器配置取自 spike-hlog 的 `H: VSETCFG` 行）。`rtl/rodinia/` 是 `hwacha-cc/test/apps` 四个程序的三次计时版；`scripts/compare_rodinia.py` 取踪迹里第二次运行的 vf 块与 RTL 的 `_warm2` 比较，并接入 ctest（`calibrate-rodinia`）。
+
+### 10.5 Rodinia 内核（踪迹驱动）
+
+`rtl/rodinia/`（N = 1024 点 / 2048 记录，`rtl/results/rodinia-*.log`）三次计时，取 warm2；模型取踪迹中第二次运行的 vf 块：
+
+| 内核（hwacha-cc 编译的 OpenCL） | vf 块数 | RTL 冷 | RTL 稳态 | C++ | 误差 | Python | 误差 |
+|---|---|---|---|---|---|---|---|
+| nn（跨步 load ×2、`vfsqrt.s`、一致性分支） | 4 | 15106 | 14599 | 13260 | −9.2% | 13227 | −9.4% |
+| kmeans_swap（索引 load + 索引 store，谓词化） | 40 | 23593 | 21645 | 21057 | −2.7% | 17603 | −18.7% |
+| kmeans_c（7 个入口块、索引 load、标量移位链） | 248 | 64650 | 63993 | 64893 | +1.4% | 67112 | +4.9% |
+| pgain（块内标量 load/store、分歧循环、索引访存、跨步 load/store） | 40 | 26048 | 25272 | 25367 | +0.4% | 25475 | +0.8% |
+| pathfinder（150 条指令的块、10 个分支、索引访存） | 36 | 145084 | 144765 | 136351 | −5.8% | 134900 | −6.8% |
+
+C++ 模型平均 |误差| 3.9%，最大 9.2%（nn）。这是在校准了除法/开方吞吐（10.7）和跨步访存每元素一个请求（10.7）之后的结果；校准前 nn 是 +228%。Python 模型在 kmeans_swap 上 −18.7%：索引 store 的在途请求数（VMT）计账与 C++ 不同，C++ 显示 16% 的时间 VMT 满而 Python 没有；C++ 与 RTL 更接近，Python 保留为已知偏差。
+
+### 10.6 对齐后的完整基准与 2 lane 含 gather 的基准
+
+（待 RTL 计时完成后填入。）
+
+### 10.7 除法/开方、跨步访存与 VSDQ（`rtl/results/micro-n4096-aligned2.log`）
+
+新增微基准 `micro_fsqrt_s`、`micro_fdiv_s`、`micro_fdiv_d`（操作数先用 vs1 填成正常数：未初始化的 VRF 是 0，hardfloat 对 0/NaN 走特殊值快速路径，那样测出来每元素只有 0.8 拍）、`micro_lstride`、`micro_sstride`（32 位元素、步长 8 B，即 Rodinia nn 的结构体访问）：
+
+| 项目 | RTL（每 lane、稳态） | 模型修正 |
+|---|---|---|
+| `vfdiv.s` / `vfdiv.d` | 12364 / 12362 拍 = 每元素 3.02 拍 | `fdiv_cycles_per_elem` 22 → 3（两个 `DivSqrtRecF64` slice 各约 6 拍） |
+| `vfsqrt.s` | 20559 拍 = 每元素 5.02 拍 | 新参数 `fsqrt_cycles_per_elem` = 5 |
+| 跨步 load（4 B、步长 8 B） | 4172 拍 = 每元素 1.02 拍 | 跨步/索引访存每个元素一个 TileLink 请求（之前把落在同一 16 B beat 的元素合并成一个请求，少算一半） |
+| 跨步 store | 4207 拍 = 每元素 1.03 拍 | 同上；`store_beat_cycles` 只作用于单位步长的 16 B beat；C++ 的 VSDQ 改为按 16 B 数据量而不是按请求数计条目（否则跨步 store 每 strip 8 个请求把 8 项的 VSDQ 占满，慢 11%） |
+
+修正后单 lane 微基准（数组 4 KB 对齐）：
+
+| kernel | RTL 冷 | RTL 稳态 | C++ | 误差 |
+|---|---|---|---|---|
+| micro_load / load2 | 2649 / 4180 | 2144 / 4180 | 2097 / 4154 | −2.2% / −0.6% |
+| micro_store | 3002 | 2117 | 2399 | +13.3%（见 10.8） |
+| micro_copy / ldst / stld / inplace | 4392 / 4602 / 4263 / 4643 | 4474 / 4345 / 4184 / 4521 | 4456 / 4456 / 4461 / 4447 | −0.4% / +2.6% / +6.6% / −1.6% |
+| micro_lstride / sstride | 4198 / 4205 | 4172 / 4207 | 4146 / 4141 | −0.6% / −1.6% |
+| micro_fdiv_s / fdiv_d / fsqrt_s | 12365 / 12385 / 20597 | 12364 / 12362 / 20559 | 12436 / 12438 / 20628 | +0.6% / +0.6% / +0.3% |
+| micro_alu / fma_dep | 8227 / 8249 | 8223 / 8248 | 8331 / 8334 | +1.3% / +1.0% |
+| micro_empty | 616 | 570 | 521 | −8.6% |
+
+平均 |误差| 2.8%。
+
+### 10.8 store 吞吐随布局波动的来源（`rtl/results/probe6.log`）
+
+探针 6 在一块 64 KB 对齐的 512 KB 缓冲区里改变 store 流的起点偏移（相对 64 KB 边界，即 L2 set 周期）和 copy 的源/目的距离：
+
+| store 起点偏移 | 0 | 64 B | 1 KB | 4 KB | 8 KB | 16 KB | 32 KB | 48 KB |
+|---|---|---|---|---|---|---|---|---|
+| 稳态周期（2048 beat） | 2137 | 2368 | 2110 | 2347 | 2347 | 2110 | 2110 | 2247 |
+| 每 beat 拍数 | 1.04 | 1.16 | 1.03 | 1.15 | 1.15 | 1.03 | 1.03 | 1.10 |
+
+load 在所有偏移下都是 2109 拍（每 beat 1.03 拍）。copy 的目的与源相距 36 KB / 64 KB / 68 KB / 128 KB / 129 KB 时分别 4482 / 4517 / 4168 / 4484 / 4482 拍——相距 64 KB 整数倍（同 L2 set）并不特别慢。所以 store 每 beat 1.03–1.16 拍的波动不是 set 别名，而是与地址的关系不规则；结合 10.1 的 MSHR 占用数据，最可能的机制是 InclusiveCache 对 PutPartial 的读-改-写在 `BankedStore` 子 bank 上的冲突，而子 bank 由行所在的 **way** 参与决定，way 由替换历史决定、不由地址决定，模型无法（也不值得）复现。模型保留 `store_beat_cycles` 作为单位步长 store 的平均代价：RTL 配置取区间中值 1.10（此前 1.15 是按未对齐数据拟合的上限）。
+
+### 10.9 第三轮之后的误差汇总（C++ 模型）
+
+- 单 lane 微基准（15 个，数组对齐）：平均 2.8%，最大 13.3%（micro_store，布局波动）。
+- 2 lane 微基准（10 个，数组对齐，关闭共享端口近似）：平均 3.7%，最大 16.9%（micro_empty，仅 319 拍）。
+- Rodinia 内核（5 个，踪迹驱动）：平均 3.9%，最大 9.2%（nn）。
+- hwacha-cc bench 内核（5 个，踪迹驱动，8.1 节）：−3%～−7%，divloop −12%（未重跑）。
+- 完整基准（对齐数组的 1 lane 与含 gather 的 2 lane）：见 10.6。
+
 ## 9. 下一步
 
-1. store 的代价随布局在每 beat 1.0–1.2 拍之间波动、2 lane 下更高：需要 TileLink 通道级跟踪定位是 InclusiveCache 的 Put 路径还是 tile 交叉开关的仲裁。
-2. divloop 残余 −12%：块内谓词逻辑（vpop）与谓词化向量操作交错时的调度细节。
-3. sfilter +8%：3 个 load 占 9 个序列器槽位时的窗口行为，模型比 RTL 保守。
-4. 冷启动效应（L1D 脏行/共享行探测）可作为 `warm_l2` 的可选描述建模。
-5. VRU 与混合精度在开源 RTL 上仍没有可用配置，只能对论文数据做趋势校验。
+1. store 每 beat 代价随布局在 1.03–1.16 拍之间波动（10.8）：与 InclusiveCache 数据阵列 way 相关的冲突，只能取平均值。
+2. nn −9%、pathfinder −6%：都是分支多、谓词化访存多的块，模型的一致性分支（每 strip 6 拍）与谓词归约可能仍偏乐观；divloop −12% 同类。
+3. Python 模型对索引 store 的 VMT 计账与 C++ 不同（kmeans_swap −19%）。
+4. 冷启动效应（L1D 脏行/共享行探测，冷态比稳态慢 1%–40%）未建模：模型对应稳态。
+5. VRU 与混合精度在开源 RTL 上仍没有可用配置，只能对论文数据做趋势校验；`25-design-space.md` 的多 lane/多 bank 结论是模型外推。

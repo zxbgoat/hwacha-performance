@@ -20,6 +20,7 @@ struct TraceInstr {
 
 struct TraceBlock {                             // 一次 vf 块的执行
     uint64_t startPc = 0;
+    uint64_t basePc = 0;     // 内核文件第一条指令的地址（多入口块时 != startPc）
     unsigned vl = 0;
     std::vector<TraceInstr> instrs;
 };
@@ -28,7 +29,7 @@ struct Trace {
     std::vector<TraceBlock> blocks;
     // 只保留起始 pc 落在 [lo, hi) 内的块（用 ELF 符号表把内核名映射到地址范围）
     void filter(uint64_t lo, uint64_t hi);
-    static Trace load(const std::string &path, uint64_t lo = 0, uint64_t hi = ~0ull);
+    static Trace load(const std::string &path, uint64_t lo = 0, uint64_t hi = ~0ull, uint64_t base = 0);
 };
 
 }  // namespace hw

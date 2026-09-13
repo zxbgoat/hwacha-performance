@@ -1,0 +1,12 @@
+N=4096
+RESULT micro_empty 644 cycles 4096 elems
+RESULT micro_empty_warm 575 cycles 4096 elems
+RESULT micro_load 2592 cycles 4096 elems
+RESULT micro_load_warm 2121 cycles 4096 elems
+RESULT micro_store 2920 cycles 4096 elems
+RESULT micro_store_warm 2260 cycles 4096 elems
+RESULT micro_copy 4317 cycles 4096 elems
+RESULT micro_copy_warm 4178 cycles 4096 elems
+RESULT micro_load2 4184 cycles 4096 elems
+RESULT micro_load2_warm 4181 cycles 4096 elems
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

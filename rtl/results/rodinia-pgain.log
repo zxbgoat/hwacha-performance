@@ -1,0 +1,6 @@
+pgain scalar: 330633 cycles, 322.88 cyc/elem
+pgain hwacha-cc: 26048 cycles, 25.43 cyc/elem
+pgain PASS (0 mismatches)
+pgain hwacha-cc_warm: 25456 cycles, 24.85 cyc/elem
+pgain hwacha-cc_warm2: 25272 cycles, 24.67 cyc/elem
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

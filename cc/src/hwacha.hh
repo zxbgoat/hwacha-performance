@@ -19,7 +19,7 @@ struct HwachaParams {
     unsigned nVectorRegs = 256, nPredRegs = 16, nSeqEntries = 8, nFmaUnits = 2;
     bool confPrec = false;
     unsigned stagesAlu = 1, stagesPlu = 0, stagesIMul = 3, stagesDFma = 4, stagesSFma = 3, stagesHFma = 3, stagesFConv = 2, stagesFCmp = 1;
-    unsigned fdivCyclesPerElem = 22, idivCyclesPerElem = 65;
+    unsigned fdivCyclesPerElem = 3, fsqrtCyclesPerElem = 5, idivCyclesPerElem = 65;   // RTL micro_fdiv_*/fsqrt_s 校准（每 lane 每元素）
     unsigned cmdqLen = 32, vfFetchLatency = 2, scalarSmuLatency = 30, scalarFpuLatency = 8, scalarMulDivLatency = 8;
     unsigned branchResolveLatency = 4, ctrlCyclesPerIter = 6;
     unsigned branchStripCycles = 4;  // 谓词归约每 strip 占用的周期（RTL 实测 6）
@@ -93,6 +93,7 @@ struct LaneOp {
     struct Beat { uint64_t addr; std::vector<unsigned> banks; };
     std::vector<std::vector<Beat>> beats;
     std::vector<unsigned> beatsReturned, beatsWritten;
+    std::vector<unsigned> vsdqEntries;   // 每 strip 占用的 VSDQ 条目数（按 16 B 数据计，跨步/索引 store 每元素一个请求但数据量不变）
     std::vector<Cycles> lastWrite;
     unsigned stripPtr = 0, beatPtr = 0, stripsSent = 0;
     Cycles vmuStart = 0;

@@ -50,7 +50,8 @@ def _trace_arg(args):
     if args.trace_range:
         lo, hi = (int(x, 16) for x in args.trace_range.split(':'))
     blocks = tuple(int(x) for x in args.trace_blocks.split(':')) if args.trace_blocks else None
-    t = load_trace(args.trace, lo, hi, blocks)
+    base = int(args.trace_base, 16) if getattr(args, 'trace_base', None) else (lo if args.trace_range else None)
+    t = load_trace(args.trace, lo, hi, blocks, base)
     if not t:
         raise SystemExit('trace contains no vf blocks in range')
     return t
@@ -127,6 +128,7 @@ def main(argv=None):
         p.add_argument('--trace', default=None, help='Spike 指令级踪迹（scripts/hwacha_trace.py run）')
         p.add_argument('--trace-range', default=None, help='vf 块起始 pc 范围 lo:hi（十六进制）')
         p.add_argument('--trace-blocks', default=None, help='只用第 a..b 个块，a:b')
+        p.add_argument('--trace-base', default=None, help='内核文件第一条指令的地址（十六进制；默认取 --trace-range 的下界，多入口 vf 块需要）')
 
     p = sub.add_parser('run'); p.add_argument('kernel'); common(p)
     p.add_argument('--bounds', action='store_true', help='同时打印解析式下界')

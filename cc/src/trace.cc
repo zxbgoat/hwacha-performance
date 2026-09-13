@@ -17,7 +17,7 @@ static unsigned decField(const std::string &line, const char *key) {
     return (unsigned)std::strtoul(line.c_str() + p + std::strlen(key), nullptr, 10);
 }
 
-Trace Trace::load(const std::string &path, uint64_t lo, uint64_t hi) {
+Trace Trace::load(const std::string &path, uint64_t lo, uint64_t hi, uint64_t base) {
     std::ifstream f(path);
     if (!f) sim::fatal("cannot open trace " + path);
     Trace t;
@@ -41,7 +41,7 @@ Trace Trace::load(const std::string &path, uint64_t lo, uint64_t hi) {
             std::string act = ap == std::string::npos ? "-" : line.substr(ap + 4);
             while (!act.empty() && (act.back() == '\r' || act.back() == ' ')) act.pop_back();
             // 块边界：上一条是 vstop（next == 0 或未接续）或 pc 不等于上一条的 next
-            if (!inBlock || ti.pc != expectPc) { flush(); inBlock = true; cur.startPc = ti.pc; cur.vl = ti.vl; }
+            if (!inBlock || ti.pc != expectPc) { flush(); inBlock = true; cur.startPc = ti.pc; cur.basePc = base ? base : ti.pc; cur.vl = ti.vl; }
             if (act == "-") ti.scalar = true;
             else {
                 ti.active.assign(ti.vl, 0);

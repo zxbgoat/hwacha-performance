@@ -66,3 +66,8 @@ bench-nogather-n$(N).riscv: main.c kernels.S ../kernels/*.S $(COMMON)/crt.S $(CO
 	$(CC) $(CFLAGS) -DN=$(N) -DNO_GATHER -o $@ main.c kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c $(LDFLAGS)
 rtl-nogather: bench-nogather-n$(N).riscv
 	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/rtl-nogather-n$(N)$(LOGTAG).log
+
+probe6.riscv: probe6.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+probe6-rtl: probe6.riscv
+	mkdir -p results && stdbuf -oL $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -v "^\[UART\]" | tee results/probe6.log

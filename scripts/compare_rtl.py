@@ -15,16 +15,22 @@ def rtl_results(paths):
                 out[(m.group(1), int(m.group(3)))] = int(m.group(2))
     return out
 
-def run_cc(kernel, n, cfg):
+def _sets(sets):
+    out = []
+    for kv in sets or []:
+        out += ['--set', kv]
+    return out
+
+def run_cc(kernel, n, cfg, sets=None):
     exe = os.path.join(ROOT, 'cc', 'build', 'hwacha-sim')
-    r = subprocess.run([exe, 'run', kernel, '--n', str(n), '--config', cfg, '--quiet', '--json'], capture_output=True, text=True)
+    r = subprocess.run([exe, 'run', kernel, '--n', str(n), '--config', cfg, '--quiet', '--json'] + _sets(sets), capture_output=True, text=True)
     try:
         return json.loads(r.stdout)['cycles']
     except Exception:
         return None
 
-def run_py(kernel, n, cfg):
-    r = subprocess.run([sys.executable, '-m', 'hwacha_perf.cli', 'run', kernel, '--n', str(n), '--config', cfg, '--json'],
+def run_py(kernel, n, cfg, sets=None):
+    r = subprocess.run([sys.executable, '-m', 'hwacha_perf.cli', 'run', kernel, '--n', str(n), '--config', cfg, '--json'] + _sets(sets),
                        capture_output=True, text=True, cwd=ROOT)
     try:
         return json.loads(r.stdout)['cycles']
@@ -36,6 +42,7 @@ def main():
     ap.add_argument('--logs', default=None)
     ap.add_argument('--config', default=os.path.join(ROOT, 'configs', 'rtl-hwacha-rocket.json'))
     ap.add_argument('--no-py', action='store_true')
+    ap.add_argument('--set', action='append', default=None, help='传给两个模型的参数覆盖（如 mem.rocc_shared_port=false）')
     ap.add_argument('--max-err', type=float, default=None, help='任一内核 C++ 误差超过该百分比则返回非零')
     a = ap.parse_args()
     logs = a.logs.split(',') if a.logs else sorted(glob.glob(os.path.join(ROOT, 'rtl', 'results', '*.log')))
@@ -51,8 +58,8 @@ def main():
             continue
         warm = res.get((k + '_warm2', n)) or res.get((k + '_warm', n))   # 优先无标量验证循环干扰的第三次计时
         ref = warm if warm else rtl
-        c = run_cc(kp, n, a.config)
-        p = None if a.no_py else run_py(kp, n, a.config)
+        c = run_cc(kp, n, a.config, a.set)
+        p = None if a.no_py else run_py(kp, n, a.config, a.set)
         def e(v): return f"{100*(v-ref)/ref:+.1f}%" if v else 'n/a'
         print(f"{k:<14}{n:>7}{rtl:>10}{warm if warm else '-':>11}{c if c else 'ERR':>9}{e(c):>8}{p if p else '-':>9}{e(p):>8}")
         if c: errs.append(abs(100*(c-ref)/ref))

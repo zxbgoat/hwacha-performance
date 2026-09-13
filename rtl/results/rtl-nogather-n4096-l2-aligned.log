@@ -1,0 +1,5 @@
+N=4096
+RESULT vvadd 7525 cycles 4096 elems
+RESULT vvadd_warm 7195 cycles 4096 elems
+RESULT vvadd_warm2 6258 cycles 4096 elems
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL2RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

@@ -1,0 +1,19 @@
+N=64
+RESULT vvadd 330 cycles 64 elems
+RESULT vvadd_warm 179 cycles 64 elems
+RESULT vvadd_warm2 138 cycles 64 elems
+RESULT saxpy 227 cycles 64 elems
+RESULT saxpy_warm 115 cycles 64 elems
+RESULT saxpy_warm2 125 cycles 64 elems
+RESULT daxpy 268 cycles 64 elems
+RESULT daxpy_warm 186 cycles 64 elems
+RESULT daxpy_warm2 145 cycles 64 elems
+RESULT csaxpy 242 cycles 64 elems
+RESULT csaxpy_warm 167 cycles 64 elems
+RESULT csaxpy_warm2 127 cycles 64 elems
+RESULT sfilter 221 cycles 64 elems
+RESULT sfilter_warm 194 cycles 64 elems
+RESULT sfilter_warm2 189 cycles 64 elems
+RESULT gather 375 cycles 64 elems
+RESULT gather_warm 208 cycles 64 elems
+RESULT gather_warm2 183 cycles 64 elems

@@ -1,0 +1,78 @@
+OFF 0
+RESULT store_off 3947 cycles 4096 elems
+RESULT store_off_warm 2112 cycles 4096 elems
+RESULT store_off_warm2 2137 cycles 4096 elems
+RESULT load_off 2124 cycles 4096 elems
+RESULT load_off_warm 2142 cycles 4096 elems
+RESULT load_off_warm2 2109 cycles 4096 elems
+OFF 64
+RESULT store_off 2248 cycles 4096 elems
+RESULT store_off_warm 2347 cycles 4096 elems
+RESULT store_off_warm2 2368 cycles 4096 elems
+RESULT load_off 2109 cycles 4096 elems
+RESULT load_off_warm 2109 cycles 4096 elems
+RESULT load_off_warm2 2109 cycles 4096 elems
+OFF 1024
+RESULT store_off 2314 cycles 4096 elems
+RESULT store_off_warm 2347 cycles 4096 elems
+RESULT store_off_warm2 2110 cycles 4096 elems
+RESULT load_off 2109 cycles 4096 elems
+RESULT load_off_warm 2112 cycles 4096 elems
+RESULT load_off_warm2 2112 cycles 4096 elems
+OFF 4096
+RESULT store_off 2282 cycles 4096 elems
+RESULT store_off_warm 2347 cycles 4096 elems
+RESULT store_off_warm2 2347 cycles 4096 elems
+RESULT load_off 2109 cycles 4096 elems
+RESULT load_off_warm 2109 cycles 4096 elems
+RESULT load_off_warm2 2109 cycles 4096 elems
+OFF 8192
+RESULT store_off 2659 cycles 4096 elems
+RESULT store_off_warm 2347 cycles 4096 elems
+RESULT store_off_warm2 2347 cycles 4096 elems
+RESULT load_off 2109 cycles 4096 elems
+RESULT load_off_warm 2109 cycles 4096 elems
+RESULT load_off_warm2 2109 cycles 4096 elems
+OFF 16384
+RESULT store_off 2634 cycles 4096 elems
+RESULT store_off_warm 2110 cycles 4096 elems
+RESULT store_off_warm2 2110 cycles 4096 elems
+RESULT load_off 2109 cycles 4096 elems
+RESULT load_off_warm 2109 cycles 4096 elems
+RESULT load_off_warm2 2109 cycles 4096 elems
+OFF 32768
+RESULT store_off 2993 cycles 4096 elems
+RESULT store_off_warm 2248 cycles 4096 elems
+RESULT store_off_warm2 2110 cycles 4096 elems
+RESULT load_off 2109 cycles 4096 elems
+RESULT load_off_warm 2109 cycles 4096 elems
+RESULT load_off_warm2 2109 cycles 4096 elems
+OFF 49152
+RESULT store_off 3014 cycles 4096 elems
+RESULT store_off_warm 2347 cycles 4096 elems
+RESULT store_off_warm2 2247 cycles 4096 elems
+RESULT load_off 2109 cycles 4096 elems
+RESULT load_off_warm 2109 cycles 4096 elems
+RESULT load_off_warm2 2109 cycles 4096 elems
+DIST 36864
+RESULT copy_dist 4504 cycles 4096 elems
+RESULT copy_dist_warm 4199 cycles 4096 elems
+RESULT copy_dist_warm2 4482 cycles 4096 elems
+DIST 65536
+RESULT copy_dist 5223 cycles 4096 elems
+RESULT copy_dist_warm 4608 cycles 4096 elems
+RESULT copy_dist_warm2 4517 cycles 4096 elems
+DIST 69632
+RESULT copy_dist 4625 cycles 4096 elems
+RESULT copy_dist_warm 4168 cycles 4096 elems
+RESULT copy_dist_warm2 4168 cycles 4096 elems
+DIST 131072
+RESULT copy_dist 5965 cycles 4096 elems
+RESULT copy_dist_warm 4715 cycles 4096 elems
+RESULT copy_dist_warm2 4484 cycles 4096 elems
+DIST 132096
+RESULT copy_dist 4533 cycles 4096 elems
+RESULT copy_dist_warm 4168 cycles 4096 elems
+RESULT copy_dist_warm2 4482 cycles 4096 elems
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

@@ -29,7 +29,8 @@ class HwachaConfig:
     stages_fconv: int = 2
     stages_fcmp: int = 1
     # 变延迟单元：每 lane 各一个非流水单元，按元素串行
-    fdiv_cycles_per_elem: int = 22   # hardfloat DivSqrtRecF64 近似
+    fdiv_cycles_per_elem: int = 3    # RTL micro_fdiv_s/d：每 lane 每元素 3 拍（2 个 DivSqrtRecF64 slice 各约 6 拍）
+    fsqrt_cycles_per_elem: int = 5   # RTL micro_fsqrt_s：每 lane 每元素 5 拍
     idiv_cycles_per_elem: int = 65   # rocket MulDiv 64 位除法近似
     # ---- 前端与命令队列 ----
     cmdq_len: int = 32               # HwachaCMDQLen

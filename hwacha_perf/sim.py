@@ -430,7 +430,7 @@ class Lane:
                 return 'latch'
             unit = u
             if kind in ('fdiv', 'idiv'):
-                per = cfg.fdiv_cycles_per_elem if kind == 'fdiv' else cfg.idiv_cycles_per_elem
+                per = (cfg.fsqrt_cycles_per_elem if ins.mnemonic.startswith('vfsqrt') else cfg.fdiv_cycles_per_elem) if kind == 'fdiv' else cfg.idiv_cycles_per_elem
                 div = self.units[kind]
                 if not div.free(fop):
                     return 'fu'
@@ -567,7 +567,8 @@ class Lane:
             st.store_beats += 1
         b.completions[s].append(comp)
         heapq.heappush(self.outstanding, comp)
-        self._port_credit += (cfg.store_beat_cycles if (is_store or ins.kind == 'amo') else cfg.load_beat_cycles) - 1.0
+        # store_beat_cycles 只作用于单位步长的 16 B store beat（RTL：跨步/索引 store 与 load 一样每元素 1 拍）
+        self._port_credit += (cfg.store_beat_cycles if ((is_store or ins.kind == 'amo') and ins.mode == 'unit') else cfg.load_beat_cycles) - 1.0
         if self.sim.mcfg.rocc_shared_port:
             if self.sim.port_last_src >= 0 and self.sim.port_last_src != self.id:
                 self.sim.port_credit += self.sim.mcfg.rocc_switch_penalty
@@ -954,7 +955,9 @@ class Simulator:
                 note('issue')
                 return
             ti = self._cur_trace.instrs[self._trace_pos]
-            self.pc = (ti.pc - self._cur_trace.start_pc) // 8
+            self.pc = self._cur_trace.index_of(ti.pc)
+            if self.pc < 0 or self.pc >= len(self.kernel.instrs):
+                raise RuntimeError(f'trace pc {ti.pc:x} outside kernel block (index {self.pc}); use --trace-base')
         ins = self.instrs[self.pc]
         # 共享寄存器 scoreboard
         for r in ins.srcs:
@@ -1100,6 +1103,8 @@ class Simulator:
         ins = op.ins
         tb = self.cfg.tl_data_bytes
         out: list[int] = []
+        # RTL（tlv 跟踪 + micro_lstride/sstride）：只有单位步长访存把同一 16 B beat 内的元素合并成一个请求，跨步/索引访存每元素一个请求
+        merge = ins.mode == 'unit'
         if op.trace is not None and not op.trace.scalar and op.trace.mem:
             addr_of = dict(op.trace.mem)
             last = -1
@@ -1112,7 +1117,7 @@ class Simulator:
                         aa = a + j * ins.elsize
                         for x in range(aa, aa + ins.elsize, tb):
                             b = x // tb
-                            if b != last:
+                            if b != last or not merge:
                                 out.append(b)
                                 last = b
                         b = (aa + ins.elsize - 1) // tb
@@ -1129,14 +1134,10 @@ class Simulator:
             return out
         if ins.mode == 'stride':
             step = op.stride_bytes
-            last = -1
             for e0, e1 in lo.strip_elems(k):
                 for e in range(e0, e1):
                     for j in range(ins.seglen + 1):
-                        b = (op.base + e * step + j * ins.elsize) // tb
-                        if b != last:
-                            out.append(b)
-                            last = b
+                        out.append((op.base + e * step + j * ins.elsize) // tb)
             return out
         # indexed / AMO
         arr, pattern = op.gather if op.gather else (None, 'random')

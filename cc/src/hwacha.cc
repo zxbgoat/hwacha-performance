@@ -9,6 +9,12 @@ namespace hw {
 using sim::curTick;
 
 // --------------------------------------------------------------- 参数
+// VSDQ 条目：单位步长每个 16 B beat 一条；跨步/索引 store 每元素一个请求，但数据量按元素大小折算成 16 B 条目
+static unsigned vsdqEntriesFor(const Instr &ins, size_t nbeats, unsigned tb) {
+    if (nbeats == 0 || ins.mode == Mode::Unit) return (unsigned)nbeats;   // 全被谓词屏蔽的 strip 不占条目
+    return std::max<unsigned>(1, (unsigned)((nbeats * ins.elsize + tb - 1) / tb));
+}
+
 HwachaParams HwachaParams::from(const sim::Params &p) {
     HwachaParams h;
     auto I = [&](const char *k, unsigned &f) { f = (unsigned)p.getInt(k, f); };
@@ -18,7 +24,7 @@ HwachaParams HwachaParams::from(const sim::Params &p) {
     h.confPrec = p.getBool("conf_prec", h.confPrec);
     I("stages_alu", h.stagesAlu); I("stages_plu", h.stagesPlu); I("stages_imul", h.stagesIMul); I("stages_dfma", h.stagesDFma);
     I("stages_sfma", h.stagesSFma); I("stages_hfma", h.stagesHFma); I("stages_fconv", h.stagesFConv); I("stages_fcmp", h.stagesFCmp);
-    I("fdiv_cycles_per_elem", h.fdivCyclesPerElem); I("idiv_cycles_per_elem", h.idivCyclesPerElem);
+    I("fdiv_cycles_per_elem", h.fdivCyclesPerElem); I("fsqrt_cycles_per_elem", h.fsqrtCyclesPerElem); I("idiv_cycles_per_elem", h.idivCyclesPerElem);
     I("cmdq_len", h.cmdqLen); I("vf_fetch_latency", h.vfFetchLatency); I("scalar_smu_latency", h.scalarSmuLatency);
     I("scalar_fpu_latency", h.scalarFpuLatency); I("scalar_muldiv_latency", h.scalarMulDivLatency);
     I("branch_resolve_latency", h.branchResolveLatency); I("ctrl_cycles_per_iter", h.ctrlCyclesPerIter);
@@ -215,18 +221,18 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
         if (skind == "fdiv" || skind == "idiv") {
             Timeline &div = _units[skind];
             if (!div.free(fop)) return "fu";
-            unsigned per = skind == "fdiv" ? _p.fdivCyclesPerElem : _p.idivCyclesPerElem;
+            unsigned per = skind == "fdiv" ? (ins.mnemonic.rfind("vfsqrt", 0) == 0 ? _p.fsqrtCyclesPerElem : _p.fdivCyclesPerElem) : _p.idivCyclesPerElem;
             writeTime = div.firstFree(fop) + per * nElems + 2;
         } else {
             writeTime = fop + _p.nBanks + (skind == "branch" ? _p.branchResolveLatency : 4);
         }
     } else if (skind == "store") {
-        if (_vsdqUsed + b.beats[k].size() > _p.vsdqBeats) return "vsdq";
+        if (_vsdqUsed + vsdqEntriesFor(ins, b.beats[k].size(), _p.tlDataBytes) > _p.vsdqBeats) return "vsdq";
     } else if (skind == "vgu" || skind == "vgu_store") {
         if (!_units["vgu"].free(fop, occupancy)) return "fu";
         if (!latchesFree("vgu")) return "latch";
         unit = "vgu";
-        if (skind == "vgu_store" && _vsdqUsed + b.beats[k].size() > _p.vsdqBeats) return "vsdq";
+        if (skind == "vgu_store" && _vsdqUsed + vsdqEntriesFor(ins, b.beats[k].size(), _p.tlDataBytes) > _p.vsdqBeats) return "vsdq";
     }
     // 写口：展开器写 µop 在 writeTime + bank 号到达各 bank
     bool vrfWrite = writeTime != NoCycle && ins.writesVrf() && skind != "rfirst" && skind != "branch";
@@ -256,8 +262,8 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
         else if (vrfWrite) { for (unsigned bk = 0; bk < _p.nBanks; ++bk) _bankWrite[bk].reserve(writeTime + bk); ++writePortBusy; }
         b.done[k] = writeTime;
     }
-    if (skind == "store") { b.dataReady[k] = now + 2; _vsdqUsed += b.beats[k].size(); }
-    else if (skind == "vgu_store") { b.dataReady[k] = fop + 1; b.addrReady[k] = fop + 1; _vsdqUsed += b.beats[k].size(); }
+    if (skind == "store") { b.dataReady[k] = now + 2; b.vsdqEntries[k] = vsdqEntriesFor(ins, b.beats[k].size(), _p.tlDataBytes); _vsdqUsed += b.vsdqEntries[k]; }
+    else if (skind == "vgu_store") { b.dataReady[k] = fop + 1; b.addrReady[k] = fop + 1; b.vsdqEntries[k] = vsdqEntriesFor(ins, b.beats[k].size(), _p.tlDataBytes); _vsdqUsed += b.vsdqEntries[k]; }
     else if (skind == "vgu") { b.addrReady[k] = fop + 1; b.dataReady[k] = fop + 1; }
     return nullptr;
 }
@@ -307,11 +313,11 @@ void Lane::vmuStep(Cycles now) {
     if (!_port.sendTimingReq(pkt)) { _portBlocked = true; _pendingPkt = pkt; _pendingBs = bs; vmuReason = "port_busy"; return; }
     ++_outstanding;
     if (ins.isLoad()) ++loadBeats; else ++storeBeats;
-    if (isStore && ins.kind != Kind::Amo) --_vsdqUsed;
-    if (ins.kind == Kind::Amo) --_vsdqUsed;
-    _portCredit += (isStore ? _p.storeBeatCycles : _p.loadBeatCycles) - 1.0;
+    // store_beat_cycles 只作用于单位步长的 16 B store beat（RTL：跨步/索引 store 与 load 一样每元素 1 拍）
+    _portCredit += ((isStore && ins.mode == Mode::Unit) ? _p.storeBeatCycles : _p.loadBeatCycles) - 1.0;
     vmuReason = "busy";
     if (++b->beatPtr >= b->beats[s].size()) {
+        if (isStore) _vsdqUsed -= std::min(_vsdqUsed, b->vsdqEntries[s]);   // strip 的数据全部发出，释放其 VSDQ 条目
         b->beatPtr = 0; b->stripPtr++; b->stripsSent++;
         if (b->stripPtr >= b->nstrips) vmuQueue.pop_front();
     }
@@ -327,8 +333,8 @@ void Lane::recvReqRetry() {
         const Instr &ins = *b->op->ins;
         ++_outstanding;
         if (ins.isLoad()) ++loadBeats; else ++storeBeats;
-        if (ins.isStore()) --_vsdqUsed;
         if (++b->beatPtr >= b->beats[bs->strip].size()) {
+            if (ins.isStore()) _vsdqUsed -= std::min(_vsdqUsed, b->vsdqEntries[bs->strip]);
             b->beatPtr = 0; b->stripPtr++; b->stripsSent++;
             if (b->stripPtr >= b->nstrips) vmuQueue.pop_front();
         }
@@ -602,8 +608,8 @@ void Hwacha::scalarStep(Cycles now) {
     if (_curTrace) {
         if (_tracePos >= _curTrace->instrs.size()) { _vfActive = false; _curBlock->stopped = true; maybeAck(_curBlock); note("issue"); return; }
         ti = &_curTrace->instrs[_tracePos];
-        uint64_t idx = (ti->pc - _curTrace->startPc) / 8;
-        if (idx >= _k.instrs.size()) sim::fatal("trace pc outside kernel block (index " + std::to_string(idx) + ")");
+        uint64_t idx = (ti->pc - _curTrace->basePc) / 8;
+        if (ti->pc < _curTrace->basePc || idx >= _k.instrs.size()) sim::fatal("trace pc outside kernel block (index " + std::to_string(idx) + "); use --trace-base");
         _pc = (size_t)idx;
     }
     const Instr &ins = _k.instrs[_pc];
@@ -690,7 +696,7 @@ VectorOp *Hwacha::issueVector(const Instr &ins, Cycles now) {
         lo->op = op; lo->lane = (int)l; lo->chunks = perLane[l];
         lo->nstrips = lo->chunks.empty() ? 0 : (unsigned)((lo->chunks.size() + rate - 1) / rate);
         lo->issue.assign(lo->nstrips, NoCycle); lo->readTime.assign(lo->nstrips, NoCycle); lo->done.assign(lo->nstrips, NoCycle);
-        lo->dataReady.assign(lo->nstrips, NoCycle); lo->addrReady.assign(lo->nstrips, NoCycle);
+        lo->dataReady.assign(lo->nstrips, NoCycle); lo->addrReady.assign(lo->nstrips, NoCycle); lo->vsdqEntries.assign(lo->nstrips, 0);
         lo->finished = lo->nstrips == 0; if (lo->finished) lo->finishCycle = now;
         if (ins.isMem()) {
             lo->vmuStart = now + _p.vmuIssueLatency;
@@ -737,9 +743,12 @@ std::vector<LaneOp::Beat> Hwacha::beatsFor(VectorOp &op, LaneOp &lo, unsigned k)
     auto [s0, s1] = lo.stripRange(k);
     std::vector<LaneOp::Beat> out;
     auto bankOf = [&](unsigned e) { return ((e - s0) / perRow) % _p.nBanks; };
+    // RTL（tlv 跟踪 + micro_lstride/sstride）：只有单位步长访存把落在同一个 16 B beat 里的元素合并成一个请求，
+    // 跨步/索引访存每个元素一个请求（每拍一个）
+    const bool mergeBeats = ins.mode == Mode::Unit;
     auto addElem = [&](uint64_t addr, unsigned e) {
         uint64_t b = addr / tb * tb;
-        if (out.empty() || out.back().addr != b) out.push_back(LaneOp::Beat{b, {}});
+        if (out.empty() || out.back().addr != b || !mergeBeats) out.push_back(LaneOp::Beat{b, {}});
         auto &bk = out.back().banks;
         unsigned bank = bankOf(e);
         if (std::find(bk.begin(), bk.end(), bank) == bk.end()) bk.push_back(bank);

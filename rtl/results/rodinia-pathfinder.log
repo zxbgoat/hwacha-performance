@@ -1,0 +1,10 @@
+pathfinder scalar: 246234 cycles, 240.46 cyc/elem
+pathfinder emulation vs reference: 0 mismatches
+pathfinder hwacha-cc: 145084 cycles, 141.68 cyc/elem
+pathfinder hwacha-cc_warm: 144768 cycles, 141.37 cyc/elem
+pathfinder hwacha-cc_warm2: 144765 cycles, 141.37 cyc/elem
+  dev: 22 16 16 8 14 20 26 18 19 12 9 14 | 20 14 10 15 12 12 14 18 9 17 12 24 
+  ref: 22 16 16 8 14 20 26 18 19 12 9 14 | 20 14 10 15 12 12 14 18 9 17 12 24 
+  src: 8 8 8 8 0 8 2 2 5 5 4 3 | 2 6 2 1 4 6 2 5 0 8 1 5 
+pathfinder PASS (0 mismatches / 1024)
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

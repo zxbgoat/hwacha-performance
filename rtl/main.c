@@ -19,11 +19,11 @@ static inline unsigned long cycles_now(void) { unsigned long c; asm volatile("rd
 #define VF(blk)         asm volatile("vf 0(%0)" :: "r"(blk))
 #define FENCE()         asm volatile("fence" ::: "memory")
 
-static double  xd[N + 16], yd[N + 16], refd[N + 16];
-static float   xf[N + 16], yf[N + 16], reff[N + 16], srcf[N + 16], dstf[N + 16];
-static uint8_t cond[N + 16];
-static int64_t idx[N + 16]; static double table[4096], outd[N + 16];
-static double  Bmat[16384 + 64];
+static double  xd[N + 16] __attribute__((aligned(4096))), yd[N + 16] __attribute__((aligned(4096))), refd[N + 16] __attribute__((aligned(4096)));
+static float   xf[N + 16] __attribute__((aligned(4096))), yf[N + 16] __attribute__((aligned(4096))), reff[N + 16] __attribute__((aligned(4096))), srcf[N + 16] __attribute__((aligned(4096))), dstf[N + 16] __attribute__((aligned(4096)));
+static uint8_t cond[N + 16] __attribute__((aligned(4096)));
+static int64_t idx[N + 16] __attribute__((aligned(4096))); static double table[4096] __attribute__((aligned(4096))), outd[N + 16] __attribute__((aligned(4096)));
+static double  Bmat[16384 + 64] __attribute__((aligned(4096)));
 static unsigned st = 7;
 static double frand(void) { st = st * 1103515245u + 12345u; return ((int)(st >> 8) % 2000 - 1000) / 100.0; }
 static uint32_t f2u(float f) { union { float f; uint32_t u; } c; c.f = f; return c.u; }
