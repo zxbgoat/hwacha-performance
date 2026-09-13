@@ -35,3 +35,8 @@ probe2.riscv: probe2.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
 	$(CC) $(CFLAGS) -o $@ probe2.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c $(LDFLAGS)
 probe2-rtl: probe2.riscv
 	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/probe2.log
+
+probe3.riscv: probe3.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
+	$(CC) $(CFLAGS) -o $@ probe3.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c $(LDFLAGS)
+probe3-rtl: probe3.riscv
+	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/probe3.log

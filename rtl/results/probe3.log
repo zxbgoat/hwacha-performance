@@ -1,0 +1,15 @@
+PROBE store_after_scalar_write 3225
+PROBE store_warm 2536
+PROBE store_warm 2462
+PROBE store_after_scalar_read 2661
+PROBE store_warm 2389
+PROBE store_after_scalar_read_8KB 2463
+PROBE store_warm 2388
+PROBE load_warm 2116
+PROBE load_warm 2104
+PROBE load_after_scalar_read 2619
+PROBE load_warm 2103
+PROBE load_after_scalar_write 3151
+PROBE load_warm 2100
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

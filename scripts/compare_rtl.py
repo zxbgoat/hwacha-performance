@@ -40,20 +40,20 @@ def main():
     logs = a.logs.split(',') if a.logs else sorted(glob.glob(os.path.join(ROOT, 'rtl', 'results', '*.log')))
     res = rtl_results(logs)
     # 模型对应稳态（数据驻留 L2、无 L1D 脏行、VI$ 已热），优先与 *_warm 结果比较，同时列出冷启动结果
-    print(f"{'kernel':<14}{'N':>7}{'RTL cold':>10}{'RTL warm':>10}{'C++':>9}{'err':>8}{'Python':>9}{'err':>8}")
+    print(f"{'kernel':<14}{'N':>7}{'RTL cold':>10}{'RTL steady':>11}{'C++':>9}{'err':>8}{'Python':>9}{'err':>8}")
     errs = []
     for (k, n), rtl in sorted(res.items(), key=lambda kv: (kv[0][1], kv[0][0])):
-        if k.endswith('_warm'):
+        if k.endswith('_warm') or k.endswith('_warm2'):
             continue
         kp = os.path.join(ROOT, 'kernels', k + '.S')
         if not os.path.exists(kp):
             continue
-        warm = res.get((k + '_warm', n))
+        warm = res.get((k + '_warm2', n)) or res.get((k + '_warm', n))   # 优先无标量验证循环干扰的第三次计时
         ref = warm if warm else rtl
         c = run_cc(kp, n, a.config)
         p = None if a.no_py else run_py(kp, n, a.config)
         def e(v): return f"{100*(v-ref)/ref:+.1f}%" if v else 'n/a'
-        print(f"{k:<14}{n:>7}{rtl:>10}{warm if warm else '-':>10}{c if c else 'ERR':>9}{e(c):>8}{p if p else '-':>9}{e(p):>8}")
+        print(f"{k:<14}{n:>7}{rtl:>10}{warm if warm else '-':>11}{c if c else 'ERR':>9}{e(c):>8}{p if p else '-':>9}{e(p):>8}")
         if c: errs.append(abs(100*(c-ref)/ref))
     if errs:
         print(f"C++ mean |err| = {sum(errs)/len(errs):.1f}%, max = {max(errs):.1f}%")

@@ -1,0 +1,9 @@
+N=16384
+RESULT vvadd 32912 cycles 16384 elems
+RESULT saxpy 15539 cycles 16384 elems
+RESULT daxpy 31651 cycles 16384 elems
+RESULT csaxpy 17416 cycles 16384 elems
+RESULT sfilter 22766 cycles 16384 elems
+RESULT gather 43016 cycles 16384 elems
+RESULT dgemm_opt 33096 cycles 16384 elems
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaRocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish
