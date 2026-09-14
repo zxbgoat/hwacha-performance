@@ -11,3 +11,11 @@ class HwachaL2RocketConfig extends Config(
 class HwachaL4RocketConfig extends Config(
   new hwacha.WithNLanes(4) ++
   new HwachaRocketConfig)
+
+// 8 lane / 16 lane 的 Hwacha
+class HwachaL8RocketConfig extends Config(
+  new hwacha.WithNLanes(8) ++
+  new HwachaRocketConfig)
+class HwachaL16RocketConfig extends Config(
+  new hwacha.WithNLanes(16) ++
+  new HwachaRocketConfig)

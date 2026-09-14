@@ -92,7 +92,7 @@ ctest --output-on-failure            # memtest（存储系统）+ kernels（全�
 
 ## 附：RTL 校准后新增的 C++ 专有参数
 
-- `mem.l2_store_beat_cycles` / `mem.l2_store_switch` / `mem.l2_partial_store_switch`：L2 bank 的 store 通路占用（`24-rtl-calibration.md` 10.9 节），所有 lane 共享；`store_beat_cycles` 仍是 lane 端口侧的附加代价，RTL 配置里已回到 1.0。
+- `mem.l2_store_beat_cycles` / `mem.l2_store_switch` / `mem.l2_partial_store_switch` / `mem.l2_store_conflict` / `mem.l2_store_window`：L2 bank 的 store 通路占用（`24-rtl-calibration.md` 10.9、10.10 节），所有 lane 共享；`l2_store_conflict` 是按并发行数查表的附加代价，是 1–16 lane 都能拟合的版本。`store_beat_cycles` 仍是 lane 端口侧的附加代价，RTL 配置里已回到 1.0。另有三个未启用的机械模型参数（`l2_hit_mshrs`/`l2_store_service`/…、`l2_rmw_merge_window`、`l2_store_banks`），保留供进一步研究。
 - `fsqrt_cycles_per_elem`：与 `fdiv_cycles_per_elem` 分开的开方吞吐（10.7 节）。
 - `--trace-base`：多入口 vf 块的踪迹映射（10.4 节）。
 - 跨步/索引访存每元素一个请求、VSDQ 按 16 B 数据量计条目（10.7 节）。

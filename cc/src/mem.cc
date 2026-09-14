@@ -1,4 +1,6 @@
 #include "mem.hh"
+#include <cmath>
+#include <set>
 #include <algorithm>
 #include <cassert>
 
@@ -193,6 +195,19 @@ bool L2Bank::recvTimingReq(Packet *pkt) {
         return false;
     }
     Addr la = lineAddr(pkt->addr);
+    if (_p.storeBanks && pkt->isWrite() && pkt->cmd != Packet::PrefetchReq) {
+        if (_storeBankFree.size() != _p.storeBanks) { _storeBankFree.assign(_p.storeBanks, 0); _storeBankCredit.assign(_p.storeBanks, 0); }
+        unsigned bk = (unsigned)((pkt->addr / (_p.lineBytes / 4)) % _p.storeBanks);   // 行内 16 B beat 位置
+        Tick start = std::max(curTick(), _storeBankFree[bk]);
+        if (start > curTick() + _p.rmwQueue * clockPeriod()) {
+            _needCpuRetry = true; ++*stBlockedMshr;
+            Tick when = start - _p.rmwQueue * clockPeriod();
+            if (!_cpuRetryEvent.scheduled()) sim::mainEventQueue().schedule(&_cpuRetryEvent, std::max(when, clockEdge(1)));
+            return false;
+        }
+        _storeBankCredit[bk] += _p.rmwSlots; Cycles whole = (Cycles)_storeBankCredit[bk]; _storeBankCredit[bk] -= (double)whole;
+        _storeBankFree[bk] = start + whole * clockPeriod();
+    }
     if (pkt->isWrite() && pkt->cmd != Packet::PrefetchReq) {
         // store 通路占用：同一行连续的 beat 便宜（排在同一个 MSHR 后面），换行/部分写更贵
         double cost = _p.storeCycles;
@@ -201,6 +216,41 @@ bool L2Bank::recvTimingReq(Packet *pkt) {
             if (pkt->size < _p.lineBytes / 4 && _p.partialStoreSwitch > 0) cost += _p.partialStoreSwitch;
         }
         _lastStoreLine = la;
+        if (!_p.storeConflict.empty()) {
+            // 并发行数：从当前行上一次出现到现在经过了几个不同的行（顺序流 0，L 条 lane 交错 L-1）；行首拍沿用上一拍
+            double n = _lastStoreConcurrency;
+            {
+                std::set<Addr> between; bool found = false;
+                for (auto it = _recentStoreBeats.rbegin(); it != _recentStoreBeats.rend(); ++it) {
+                    if (*it == la) { found = true; break; }
+                    between.insert(*it);
+                }
+                if (found) n = (double)between.size() + 1.0;
+            }
+            _lastStoreConcurrency = n;
+            _recentStoreBeats.push_back(la);
+            if (_recentStoreBeats.size() > _p.storeWindow) _recentStoreBeats.pop_front();
+            double x = std::log2(n), extra;
+            const auto &t = _p.storeConflict;
+            if (n <= t.front().first) extra = t.front().second;
+            else if (n >= t.back().first) extra = t.back().second;
+            else {
+                size_t i = 1; while (t[i].first < n) ++i;
+                double x0 = std::log2((double)t[i-1].first), x1 = std::log2((double)t[i].first);
+                extra = t[i-1].second + (t[i].second - t[i-1].second) * (x - x0) / (x1 - x0);
+            }
+            cost += extra;
+        }
+        if (_p.rmwMergeWindow) {
+            Tick win = _p.rmwMergeWindow * clockPeriod();
+            auto rs = _rmwStart.find(la);
+            if (rs == _rmwStart.end() || curTick() - rs->second >= win) {
+                cost += _p.rmwExtra;                       // 新开一次读-改-写
+                _rmwStart[la] = curTick();
+                if (_rmwStart.size() > 4096)               // 清理过期项
+                    for (auto it = _rmwStart.begin(); it != _rmwStart.end();) { if (curTick() - it->second >= win) it = _rmwStart.erase(it); else ++it; }
+            }
+        }
         _storeCredit += cost - 1.0;
         Cycles extra = 0;
         if (_storeCredit >= 1.0) { extra = (Cycles)_storeCredit; _storeCredit -= (double)extra; }
@@ -211,17 +261,36 @@ bool L2Bank::recvTimingReq(Packet *pkt) {
     Line *ln = lookup(la, setIdx);
     if (pkt->cmd == Packet::AtomicReq && !_p.supportsAtomics) sim::fatal("AMO to an L2 without atomic support");
     if (ln && ln->valid) {
+        Tick ready = clockEdge(_p.tagLatency + _p.dataLatency + (pkt->cmd == Packet::AtomicReq ? 1 : 0));
+        if (_p.hitMshrs && !pkt->isPrefetch()) {
+            // 释放已到期的行 MSHR
+            for (auto it = _hitMshrs.begin(); it != _hitMshrs.end();) { if (it->second.releaseAt <= curTick()) it = _hitMshrs.erase(it); else ++it; }
+            auto hm = _hitMshrs.find(la);
+            if (hm == _hitMshrs.end() && _hitMshrs.size() >= _p.hitMshrs) {
+                Tick soonest = ~Tick(0);
+                for (auto &kv : _hitMshrs) soonest = std::min(soonest, kv.second.releaseAt);
+                _needCpuRetry = true; ++*stBlockedMshr;
+                if (!_cpuRetryEvent.scheduled()) sim::mainEventQueue().schedule(&_cpuRetryEvent, std::max(soonest, clockEdge(1)));
+                return false;
+            }
+            HitMshr &m = hm == _hitMshrs.end() ? _hitMshrs[la] : hm->second;
+            Tick start = hm == _hitMshrs.end() ? clockEdge(_p.hitAllocLatency) : std::max(clockEdge(1), m.busyUntil);
+            double svc = pkt->isWrite() ? (pkt->size < _p.lineBytes / 4 ? _p.partialStoreService : _p.storeService) : _p.loadService;
+            m.credit += svc; Cycles whole = (Cycles)m.credit; m.credit -= (double)whole;
+            m.busyUntil = start + whole * clockPeriod();
+            m.releaseAt = m.busyUntil + (pkt->isWrite() ? _p.mshrRelease : _p.loadRelease) * clockPeriod();
+            ready = std::max(ready, m.busyUntil + _p.responseLatency * clockPeriod());
+        }
         _tagBusyUntil = clockEdge(1);
         ln->lastUsed = curTick();
         if (pkt->isPrefetch()) { pkt->makeResponse(); pkt->size = 1; queueResponse(pkt, clockEdge(_p.tagLatency)); return true; }
         if (ln->prefetched) { ++*stPrefetchUsed; ln->prefetched = false; }
         ++*stHits;
         if (pkt->isWrite()) ln->dirty = true;
-        Cycles extra = pkt->cmd == Packet::AtomicReq ? 1 : 0;
-        if (extra) ++*stAtomics;
+        if (pkt->cmd == Packet::AtomicReq) ++*stAtomics;
         if (pkt->needsResponse() && !pkt->noResp) {
             pkt->makeResponse();
-            queueResponse(pkt, clockEdge(_p.tagLatency + _p.dataLatency + extra));
+            queueResponse(pkt, ready);
         } else {
             delete pkt;
         }

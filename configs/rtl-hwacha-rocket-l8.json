@@ -1,7 +1,7 @@
 {
-  "_comment": "同 rtl-hwacha-rocket.json，但 2 lane（Chipyard 配置 HwachaL2RocketConfig = WithNLanes(2) ++ HwachaRocketConfig）",
+  "_comment": "同 rtl-hwacha-rocket.json，但 8 lane（store 代价在 L2 store 通路上，所有 lane 共享）（Chipyard 配置 HwachaL8RocketConfig = WithNLanes(8) ++ HwachaRocketConfig）",
   "hwacha": {
-    "n_lanes": 2,
+    "n_lanes": 8,
     "build_vru": false,
     "conf_prec": false,
     "n_seq_entries": 8,

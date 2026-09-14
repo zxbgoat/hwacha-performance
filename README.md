@@ -7,7 +7,7 @@ UC Berkeley Hwacha 解耦向量取指加速器的文档集与性能模型。
 - `cc/`：C++ 版 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；说明见 `docs/23-cpp-model.md`）
 - `kernels/`：用 Hwacha 汇编写的示例内核（vvadd、saxpy、daxpy、csaxpy、dgemm 分块、模板滤波、gather、FMA 峰值）
 - `configs/`：论文评估配置、开源主线配置、混合精度配置、理想内存配置、RTL 校准配置
-- `rtl/`：在 Chipyard 1.11 `HwachaRocketConfig`（1 lane）、`HwachaL2RocketConfig`（2 lane）、`HwachaL4RocketConfig`（4 lane）的 Verilator RTL 上运行同一批内核的基准、微基准、探针与 Rodinia 程序；`rtl/results/` 保存了全部 RTL 计时与踪迹日志，`rtl/patches/` 是复现所需的上游补丁；`make calibrate` 一键回归（说明见 `docs/24-rtl-calibration.md`）
+- `rtl/`：在 Chipyard 1.11 `HwachaRocketConfig`（1 lane）、`HwachaL2RocketConfig`（2 lane）、`HwachaL4/L8/L16RocketConfig`（4/8/16 lane）的 Verilator RTL 上运行同一批内核的基准、微基准、探针与 Rodinia 程序；`rtl/results/` 保存了全部 RTL 计时与踪迹日志，`rtl/patches/` 是复现所需的上游补丁；`make calibrate` 一键回归（说明见 `docs/24-rtl-calibration.md`）
 - `kernels/hcc/`：hwacha-cc 编译得到的 OpenCL 内核向量块（含分歧循环），用于执行驱动模式的校验
 - `tests/`：pytest 回归测试
 - `scripts/summary.py`：批量运行并输出汇总表
@@ -67,7 +67,7 @@ python3 -m pytest -q                               # Python 模型回归
 cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest --output-on-failure && cd ../..
 ```
 
-`ctest` 里的 6 个测试就是文档里的校准表：`memtest`/`kernels`（模型自检）、`calibrate`（1 lane：`rtl/results/rtl-n4096-aligned.log` + `micro-n4096-aligned2.log`）、`calibrate-l2`、`calibrate-l4`、`calibrate-rodinia`（踪迹驱动的 Rodinia 内核）。单独看表用比较脚本：
+`ctest` 里的 8 个测试就是文档里的校准表：`memtest`/`kernels`（模型自检）、`calibrate`（1 lane：`rtl/results/rtl-n4096-aligned.log` + `micro-n4096-aligned2.log`）、`calibrate-l2`、`calibrate-l4`、`calibrate-l8`、`calibrate-l16`、`calibrate-rodinia`（踪迹驱动的 Rodinia 内核）。单独看表用比较脚本：
 
 ```bash
 python3 scripts/compare_rtl.py --no-py --logs rtl/results/rtl-n4096-aligned.log,rtl/results/micro-n4096-aligned2.log
@@ -130,7 +130,7 @@ git -C generators/rocket-chip-inclusive-cache apply $PERF/rtl/patches/chipyard-i
 git -C generators/rocket-chip apply $PERF/rtl/patches/chipyard-rocketchip-rocc-fpu.patch
 cp $PERF/rtl/patches/HwachaLaneConfigs.scala generators/chipyard/src/main/scala/config/
 cd sims/verilator
-for c in HwachaRocketConfig HwachaL2RocketConfig HwachaL4RocketConfig; do make CONFIG=$c SIM_OPT_CXXFLAGS=-O1 -j4; done
+for c in HwachaRocketConfig HwachaL2RocketConfig HwachaL4RocketConfig HwachaL8RocketConfig HwachaL16RocketConfig; do make CONFIG=$c SIM_OPT_CXXFLAGS=-O1 -j4; done
 ```
 
 （内存小于 16 GB 时用 `-j2` 并 `setsid nohup` 分离；第一次全量构建约 1 小时，之后每个配置增量约 5–15 分钟。）仿真器在 `sims/verilator/simulator-chipyard.harness-<Config>`，约 20k 周期/秒；同时跑的仿真不要超过 3–4 个，Verilator 多线程在超载时会因自旋等待慢 10 倍以上。
@@ -141,7 +141,7 @@ for c in HwachaRocketConfig HwachaL2RocketConfig HwachaL4RocketConfig; do make C
 cd $PERF/rtl
 make calibrate LANES=1          # Spike 验证 → 基准 + 微基准 RTL 计时 → compare_rtl.py（超过 MAXERR=12% 返回非零）
 make calibrate LANES=2
-make calibrate LANES=4
+make calibrate LANES=4          # 同样支持 LANES=8 / 16（16 lane 仿真器每周期约 5 倍慢于 1 lane）
 make -C rodinia rtl             # 四个 Rodinia 程序（三次计时；~1 小时）
 make probe6-rtl                 # store 布局探针（docs/24 10.8 节）
 make tl-trace LANES=4           # TileLink 通道级跟踪：+verbose 下慢 30–50 倍，微基准约 30 分钟

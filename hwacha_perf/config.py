@@ -100,7 +100,7 @@ def _apply(obj: Any, overrides: dict) -> Any:
     names = {f.name for f in fields(obj)}
     for k, v in overrides.items():
         if k not in names:
-            if k.startswith('dram_t') or k.startswith('dram_burst') or k.startswith('l2_store') or k.startswith('l2_partial') or k in ('dram_tck_ps', 'dram_banks', 'dram_row_bytes',
+            if k.startswith('dram_t') or k.startswith('dram_burst') or k.startswith('l2_store') or k.startswith('l2_partial') or k.startswith('l2_hit') or k.startswith('l2_rmw') or k.startswith('l2_mshr') or k.startswith('l2_load') or k in ('dram_tck_ps', 'dram_banks', 'dram_row_bytes',
                                                                              'dram_frontend_latency', 'dram_backend_latency',
                                                                              'dram_read_queue', 'dram_write_queue', 'l2_tag_latency', 'l2_data_latency'):
                 continue    # 仅 C++ 模型使用的 DRAM/L2 细节参数

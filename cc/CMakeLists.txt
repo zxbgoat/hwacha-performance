@@ -29,3 +29,7 @@ add_test(NAME calibrate-l2 COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compar
          --config ${CMAKE_SOURCE_DIR}/../configs/rtl-hwacha-rocket-l2.json --logs ${CMAKE_SOURCE_DIR}/../rtl/results/rtl-n4096-l2-fixed.log)
 add_test(NAME calibrate-l4 COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compare_rtl.py --no-py --max-err 12
          --config ${CMAKE_SOURCE_DIR}/../configs/rtl-hwacha-rocket-l4.json --logs ${CMAKE_SOURCE_DIR}/../rtl/results/rtl-n4096-l4.log)
+add_test(NAME calibrate-l8 COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compare_rtl.py --no-py --max-err 12
+         --config ${CMAKE_SOURCE_DIR}/../configs/rtl-hwacha-rocket-l8.json --logs ${CMAKE_SOURCE_DIR}/../rtl/results/rtl-n4096-l8.log)
+add_test(NAME calibrate-l16 COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compare_rtl.py --no-py --max-err 12
+         --config ${CMAKE_SOURCE_DIR}/../configs/rtl-hwacha-rocket-l16.json --logs ${CMAKE_SOURCE_DIR}/../rtl/results/rtl-n4096-l16.log)

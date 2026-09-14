@@ -44,8 +44,10 @@
     "dram_latency": 12,
     "dram_bytes_per_cycle_per_channel": 64.0,
     "l2_store_beat_cycles": 1.0,
-    "l2_store_switch": 0.16,
-    "l2_partial_store_switch": 0.33,
+    "l2_store_switch": 0.0,
+    "l2_partial_store_switch": 0.2,
+    "l2_store_conflict": "1:0.05,2:0.09,4:0.20,8:0.75,16:0.97",
+    "l2_store_window": 32,
     "rocc_shared_port": false,
     "rocc_switch_penalty": 0.0
   }

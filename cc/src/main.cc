@@ -66,6 +66,29 @@ int main(int argc, char **argv) {
     lp.storeCycles = memP.getDouble("l2_store_beat_cycles", 1.0);
     lp.storeSwitch = memP.getDouble("l2_store_switch", 0.0);
     lp.partialStoreSwitch = memP.getDouble("l2_partial_store_switch", 0.0);
+    lp.hitMshrs = (unsigned)memP.getInt("l2_hit_mshrs", 0);
+    lp.hitAllocLatency = (unsigned)memP.getInt("l2_hit_alloc_latency", 2);
+    lp.mshrRelease = (unsigned)memP.getInt("l2_mshr_release", 4);
+    lp.loadRelease = (unsigned)memP.getInt("l2_load_release", 2);
+    lp.storeService = memP.getDouble("l2_store_service", 5.0);
+    lp.partialStoreService = memP.getDouble("l2_partial_store_service", 5.0);
+    lp.loadService = memP.getDouble("l2_load_service", 1.0);
+    lp.rmwMergeWindow = (unsigned)memP.getInt("l2_rmw_merge_window", 0);
+    lp.rmwExtra = memP.getDouble("l2_rmw_extra", 1.0);
+    lp.storeBanks = (unsigned)memP.getInt("l2_store_banks", 0);
+    lp.rmwSlots = memP.getDouble("l2_rmw_slots", 2.0);
+    lp.rmwQueue = (unsigned)memP.getInt("l2_rmw_queue", 2);
+    {   // "1:0.05,2:0.09,4:0.2,8:0.75,16:0.97"
+        std::string tbl = memP.getString("l2_store_conflict", "");
+        size_t pos = 0;
+        while (pos < tbl.size()) {
+            size_t c = tbl.find(':', pos), e = tbl.find(',', pos); if (e == std::string::npos) e = tbl.size();
+            if (c == std::string::npos || c > e) break;
+            lp.storeConflict.emplace_back((unsigned)std::stoul(tbl.substr(pos, c - pos)), std::stod(tbl.substr(c + 1, e - c - 1)));
+            pos = e + 1;
+        }
+        lp.storeWindow = (unsigned)memP.getInt("l2_store_window", 32);
+    }
     unsigned channels = (unsigned)memP.getInt("dram_channels", 2);
     mem::DRAMCtrl::P dp;
     dp.nChannels = channels; dp.lineBytes = lineBytes; dp.channelInterleave = lineBytes;

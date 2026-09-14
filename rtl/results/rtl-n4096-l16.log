@@ -1,0 +1,4 @@
+N=4096
+RESULT vvadd 9064 cycles 4096 elems
+RESULT vvadd_warm 8467 cycles 4096 elems
+RESULT vvadd_warm2 8182 cycles 4096 elems
