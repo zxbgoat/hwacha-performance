@@ -78,7 +78,7 @@ python3 scripts/tl_trace_stats.py rtl/results/tlv-micro-n4096-l4.log   # TileLin
 python3 scripts/design_space.py > /tmp/design_space.md                  # docs/25-design-space.md 的全部表格（约 5 分钟）
 ```
 
-预期结果（C++ 模型，`docs/24-rtl-calibration.md` 10.10 节）：完整基准平均误差 1 lane 2.5%、2 lane 2.6%、4 lane 1.9%；Rodinia 平均 4.2%（最大 9.2%）。`compare_rodinia.py` 默认用 `riscv64-unknown-elf-nm` 读 `rtl/rodinia/<prog>.riscv` 的符号地址来切分踪迹；没有工具链时用 `--syms` 直接给出（五个内核在当前二进制里的地址范围都相同）：
+预期结果（C++ 模型，`docs/24-rtl-calibration.md` 10.10 节）：完整基准平均误差 1 lane 2.5%、2 lane 2.4%、4 lane 1.8%、8 lane 2.5%、16 lane 1.3%；Rodinia 平均 4.2%（最大 9.2%）。`compare_rodinia.py` 默认用 `riscv64-unknown-elf-nm` 读 `rtl/rodinia/<prog>.riscv` 的符号地址来切分踪迹；没有工具链时用 `--syms` 直接给出（五个内核在当前二进制里的地址范围都相同）：
 
 ```bash
 python3 scripts/compare_rodinia.py --no-py --syms nn=80002010:800020a0,kmeans_swap=800021a0:800022a0,kmeans_c=80002010:800021a0,pgain=80002030:800022e0,pathfinder=80002010:800024c0
