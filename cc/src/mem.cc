@@ -185,13 +185,28 @@ void L2Bank::installLine(Addr addr, bool dirty) {
 }
 
 bool L2Bank::recvTimingReq(Packet *pkt) {
-    if (curTick() < _tagBusyUntil) {
+    Tick busy = std::max(_tagBusyUntil, pkt->isWrite() ? _storeBusyUntil : Tick(0));
+    if (curTick() < busy) {
         _needCpuRetry = true;
         ++*stBlockedTag;
-        if (!_cpuRetryEvent.scheduled()) sim::mainEventQueue().schedule(&_cpuRetryEvent, _tagBusyUntil);
+        if (!_cpuRetryEvent.scheduled()) sim::mainEventQueue().schedule(&_cpuRetryEvent, busy);
         return false;
     }
     Addr la = lineAddr(pkt->addr);
+    if (pkt->isWrite() && pkt->cmd != Packet::PrefetchReq) {
+        // store 通路占用：同一行连续的 beat 便宜（排在同一个 MSHR 后面），换行/部分写更贵
+        double cost = _p.storeCycles;
+        if (la != _lastStoreLine) {
+            cost += _p.storeSwitch;
+            if (pkt->size < _p.lineBytes / 4 && _p.partialStoreSwitch > 0) cost += _p.partialStoreSwitch;
+        }
+        _lastStoreLine = la;
+        _storeCredit += cost - 1.0;
+        Cycles extra = 0;
+        if (_storeCredit >= 1.0) { extra = (Cycles)_storeCredit; _storeCredit -= (double)extra; }
+        else if (_storeCredit < 0) _storeCredit = 0;
+        _storeBusyUntil = clockEdge(1 + extra);
+    }
     unsigned setIdx;
     Line *ln = lookup(la, setIdx);
     if (pkt->cmd == Packet::AtomicReq && !_p.supportsAtomics) sim::fatal("AMO to an L2 without atomic support");

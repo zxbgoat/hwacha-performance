@@ -89,3 +89,10 @@ ctest --output-on-failure            # memtest（存储系统）+ kernels（全�
 - 参数是文献校准值，未用 RTL 逐周期对拍。
 
 因此它的定位仍然是比较与趋势分析，只是相对 Python 模型把存储系统与数据搬运路径推进到了逐拍仲裁的精度；要成为严格意义上的周期精确模型，需要用 Verilator 运行 `ucb-bar/hwacha` 的 RTL 在同一批内核上校准上述各项。
+
+## 附：RTL 校准后新增的 C++ 专有参数
+
+- `mem.l2_store_beat_cycles` / `mem.l2_store_switch` / `mem.l2_partial_store_switch`：L2 bank 的 store 通路占用（`24-rtl-calibration.md` 10.9 节），所有 lane 共享；`store_beat_cycles` 仍是 lane 端口侧的附加代价，RTL 配置里已回到 1.0。
+- `fsqrt_cycles_per_elem`：与 `fdiv_cycles_per_elem` 分开的开方吞吐（10.7 节）。
+- `--trace-base`：多入口 vf 块的踪迹映射（10.4 节）。
+- 跨步/索引访存每元素一个请求、VSDQ 按 16 B 数据量计条目（10.7 节）。

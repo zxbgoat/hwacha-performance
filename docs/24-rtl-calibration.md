@@ -326,19 +326,48 @@ C++ 平均 |误差| 4.7%，最大 7.9%（csaxpy）。所有访存内核 2 lane �
 
 load 在所有偏移下都是 2109 拍（每 beat 1.03 拍）。copy 的目的与源相距 36 KB / 64 KB / 68 KB / 128 KB / 129 KB 时分别 4482 / 4517 / 4168 / 4484 / 4482 拍——相距 64 KB 整数倍（同 L2 set）并不特别慢。所以 store 每 beat 1.03–1.16 拍的波动不是 set 别名，而是与地址的关系不规则；结合 10.1 的 MSHR 占用数据，最可能的机制是 InclusiveCache 对 PutPartial 的读-改-写在 `BankedStore` 子 bank 上的冲突，而子 bank 由行所在的 **way** 参与决定，way 由替换历史决定、不由地址决定，模型无法（也不值得）复现。模型保留 `store_beat_cycles` 作为单位步长 store 的平均代价：RTL 配置取区间中值 1.10（此前 1.15 是按未对齐数据拟合的上限）。
 
-### 10.9 第三轮之后的误差汇总（C++ 模型）
+### 10.9 4 lane RTL 与 L2 store 通路模型
 
-- 单 lane 微基准（15 个，数组对齐）：平均 2.8%，最大 13.3%（micro_store，布局波动）。
-- 2 lane 微基准（10 个，数组对齐，关闭共享端口近似）：平均 3.7%，最大 16.9%（micro_empty，仅 319 拍）。
+新增 Chipyard 配置 `HwachaL4RocketConfig = WithNLanes(4) ++ HwachaRocketConfig`（增量构建 5 分钟）。4 lane 微基准（`rtl/results/micro-n4096-l4.log`）：计算类严格 4×（micro_alu 2076 vs 1 lane 8223，fdiv 3148 vs 12362）；load 与 1 lane 相同（2141）；但 store 变慢：micro_store 2461（1 lane 2117–2377、2 lane 2232），混合 load/store 4560–4630（1 lane 4180–4520），跨步 store 6086（1 lane 4207，每元素 1.49 拍）。
+
+4 lane 的 TileLink 跟踪（`tlv-micro-n4096-l4.log`）给出机制：四条 lane 按 64 B 行交错，A 通道严格轮流（每个请求平均等 3.0 拍），load 仍是每拍 1 个；store 只有 0.86 beat/拍，L2 的 store 延迟 19.5 拍（1 lane 15.1）、MSHR 均值 8.3（1 lane 5.3）、A 通道被 L2 反压 15%（1 lane 5%）；跨步 store 0.69 beat/拍、延迟 40 拍。区别在于连续两个 store beat 是否落在同一行：1 lane 74% 是同一行（排进同一个 MSHR，便宜），4 lane 只有 2%（每个 beat 都要新分配 MSHR、做读-改-写）。
+
+据此把 store 的附加代价从 lane 的 VMU 端口（`store_beat_cycles`，每 lane 一份，多 lane 时会被放大 lane 倍）移到 **L2 bank 的 store 通路**（`cc/src/mem.cc` `L2Bank`，所有 lane 共享）：每个 store beat 占 `l2_store_beat_cycles`（1.0）拍，与上一个 store beat 不在同一行时加 `l2_store_switch`（0.16），若还是部分写（小于 16 B 的跨步/索引 store）再加 `l2_partial_store_switch`（0.33），分数按累计信用折算成整拍。跨步/索引 store 的请求大小改为元素大小以便 L2 区分部分写。三个 RTL 配置的 `store_beat_cycles` 回到 1.0。
+
+改动后的 C++ 模型误差（同一组参数）：
+
+| | 1 lane | 2 lane | 4 lane |
+|---|---|---|---|
+| 完整基准 8 个内核，平均 / 最大 | 2.5% / 6.7%（sfilter） | 2.6% / 4.7%（dgemm） | 1.9% / 4.8%（dgemm） |
+| 微基准，平均（不含 micro_empty） | 2.2% | 4.8% | 2.3% |
+| micro_store / sstride | +2.3% / +4.2% | +8.0% / — | −2.0% / +0.9% |
+
+4 lane 完整基准（`rtl/results/rtl-n4096-l4.log`）：
+
+| kernel | 1 lane RTL | 2 lane RTL | 4 lane RTL 冷 | 4 lane RTL 稳态 | C++ | 误差 |
+|---|---|---|---|---|---|---|
+| vvadd | 6552 | 6260 | 7710 | 6655 | 6507 | −2.2% |
+| saxpy | 3255 | 3335 | 4141 | 3298 | 3271 | −0.8% |
+| daxpy | 6505 | 6645 | 7468 | 6637 | 6507 | −2.0% |
+| csaxpy | 3859 | 3934 | 4705 | 3732 | 3784 | +1.4% |
+| sfilter | 5264 | 5429 | 5947 | 5406 | 5351 | −1.0% |
+| gather | 8543 | 8766 | 9946 | 8735 | 8548 | −2.1% |
+| dgemm_opt | 8402 | 4776 | 5091 | 4544 | 4324 | −4.8% |
+| fma_peak | 12309 | 6165 | 3095 | 3093 | 3128 | +1.1% |
+
+访存内核 1→2→4 lane 完全不加速（vvadd 甚至从 6552 变 6655）；fma_peak 严格 4×；dgemm 4 lane 只有 1.85×（每次 vf 流入的 B 行被 4 条 lane 分摊后每 lane 的块太短，vf 开销占比上升，模型对此略偏乐观 −4.8%）。micro_empty 在 2/4 lane 下模型偏快 17%–26%（4 lane RTL 186 拍 vs 模型 137），是每次 vf 的固定开销在多 lane 时略高，对真实内核影响不到 1%。
+
+### 10.10 第三轮之后的误差汇总（C++ 模型）
+
+- 完整基准（8 个内核，数组对齐）：1 lane 平均 2.5%（最大 6.7% sfilter）、2 lane 2.6%（最大 4.7%）、4 lane 1.9%（最大 4.8%）。
+- 微基准（15 个 / 10 个 / 15 个）：1 lane 2.6%、2 lane 5.6%、4 lane 3.9%（最大值都是只有一两百拍的 micro_empty）。
 - Rodinia 内核（5 个，踪迹驱动）：平均 3.9%，最大 9.2%（nn）。
 - hwacha-cc bench 内核（5 个，踪迹驱动，8.1 节）：−3%～−7%，divloop −12%（未重跑）。
-- 完整基准，1 lane（8 个，数组对齐）：平均 2.1%，最大 7.9%（sfilter）。
-- 完整基准，2 lane（8 个，含 gather）：平均 4.7%，最大 7.9%（csaxpy），访存内核一致偏乐观。
 
 ## 9. 下一步
 
-1. store 每 beat 代价随布局在 1.03–1.16 拍之间波动（10.8）：与 InclusiveCache 数据阵列 way 相关的冲突，只能取平均值。
+1. store 的换行/部分写代价（10.9）是对 InclusiveCache store 通路的经验拟合，1 lane 下仍有 1.03–1.16 拍/beat 的布局波动（10.8）无法复现。
 2. nn −9%、pathfinder −6%：都是分支多、谓词化访存多的块，模型的一致性分支（每 strip 6 拍）与谓词归约可能仍偏乐观；divloop −12% 同类。
-3. Python 模型对索引 store 的 VMT 计账与 C++ 不同（kmeans_swap −19%）。
+3. Python 模型从第三轮末起不再迭代（10.9 的 L2 store 通路、VSDQ 按数据量计数等只在 C++ 里），只作为 C++ 模型的交叉参照。
 4. 冷启动效应（L1D 脏行/共享行探测，冷态比稳态慢 1%–40%）未建模：模型对应稳态。
 5. VRU 与混合精度在开源 RTL 上仍没有可用配置，只能对论文数据做趋势校验；`25-design-space.md` 的多 lane/多 bank 结论是模型外推。

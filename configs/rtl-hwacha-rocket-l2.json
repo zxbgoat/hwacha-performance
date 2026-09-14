@@ -5,7 +5,7 @@
     "build_vru": false,
     "conf_prec": false,
     "n_seq_entries": 8,
-    "store_beat_cycles": 1.10,
+    "store_beat_cycles": 1.0,
     "freq_ghz": 1.0,
     "branch_strip_cycles": 6,
     "scalar_smu_latency": 12,
@@ -43,6 +43,9 @@
     "dram_backend_latency": 2,
     "dram_latency": 12,
     "dram_bytes_per_cycle_per_channel": 64.0,
+    "l2_store_beat_cycles": 1.0,
+    "l2_store_switch": 0.16,
+    "l2_partial_store_switch": 0.33,
     "rocc_shared_port": false,
     "rocc_switch_penalty": 0.0
   }

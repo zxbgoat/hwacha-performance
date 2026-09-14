@@ -63,6 +63,9 @@ int main(int argc, char **argv) {
     lp.dataLatency = (unsigned)memP.getInt("l2_data_latency", hitLat - lp.tagLatency);
     lp.mshrs = (unsigned)memP.getInt("l2_trackers_per_bank", 16);
     lp.supportsAtomics = memP.getBool("l2_supports_amo", true);
+    lp.storeCycles = memP.getDouble("l2_store_beat_cycles", 1.0);
+    lp.storeSwitch = memP.getDouble("l2_store_switch", 0.0);
+    lp.partialStoreSwitch = memP.getDouble("l2_partial_store_switch", 0.0);
     unsigned channels = (unsigned)memP.getInt("dram_channels", 2);
     mem::DRAMCtrl::P dp;
     dp.nChannels = channels; dp.lineBytes = lineBytes; dp.channelInterleave = lineBytes;

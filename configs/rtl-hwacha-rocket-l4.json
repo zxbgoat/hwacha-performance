@@ -1,7 +1,7 @@
 {
-  "_comment": "对应 Chipyard 1.11 HwachaRocketConfig 的 Verilator RTL：单 lane、无 VRU、SiFive InclusiveCache 512 KB 8 路单 bank、SimDRAM；rtl/ 基准中数组由标量核初始化后驻留 L2（warm_l2=true）；裸机 M 态无地址翻译，TLB 缺失代价为 0；SimDRAM 为近零延迟模型：L2 缺失只多约 10–15 拍且带宽不受限（probe4.log），故 DRAM 时序设为极快",
+  "_comment": "同 rtl-hwacha-rocket.json，但 4 lane（store 代价在 L2 store 通路上，所有 lane 共享）（Chipyard 配置 HwachaL4RocketConfig = WithNLanes(4) ++ HwachaRocketConfig）",
   "hwacha": {
-    "n_lanes": 1,
+    "n_lanes": 4,
     "build_vru": false,
     "conf_prec": false,
     "n_seq_entries": 8,

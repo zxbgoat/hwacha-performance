@@ -1,0 +1,27 @@
+N=4096
+RESULT vvadd 7710 cycles 4096 elems
+RESULT vvadd_warm 7204 cycles 4096 elems
+RESULT vvadd_warm2 6655 cycles 4096 elems
+RESULT saxpy 4141 cycles 4096 elems
+RESULT saxpy_warm 3657 cycles 4096 elems
+RESULT saxpy_warm2 3298 cycles 4096 elems
+RESULT daxpy 7468 cycles 4096 elems
+RESULT daxpy_warm 7264 cycles 4096 elems
+RESULT daxpy_warm2 6637 cycles 4096 elems
+RESULT csaxpy 4705 cycles 4096 elems
+RESULT csaxpy_warm 4199 cycles 4096 elems
+RESULT csaxpy_warm2 3732 cycles 4096 elems
+RESULT sfilter 5947 cycles 4096 elems
+RESULT sfilter_warm 5565 cycles 4096 elems
+RESULT sfilter_warm2 5406 cycles 4096 elems
+RESULT gather 9946 cycles 4096 elems
+RESULT gather_warm 8922 cycles 4096 elems
+RESULT gather_warm2 8735 cycles 4096 elems
+RESULT dgemm_opt 5091 cycles 4096 elems
+RESULT dgemm_opt_warm 4568 cycles 4096 elems
+RESULT dgemm_opt_warm2 4544 cycles 4096 elems
+RESULT fma_peak 3095 cycles 4096 elems
+RESULT fma_peak_warm 3128 cycles 4096 elems
+RESULT fma_peak_warm2 3093 cycles 4096 elems
+ALL VERIFIED
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL4RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

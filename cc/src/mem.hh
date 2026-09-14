@@ -146,6 +146,9 @@ public:
         unsigned tgtsPerMshr = 8;
         unsigned writeBuffers = 8;
         bool supportsAtomics = true;
+        // store 通路（InclusiveCache 对 PutPartial 的读-改-写）：每个 store beat 占用 storeCycles 拍；
+        // 与上一个 store beat 不在同一行时再加 storeSwitch，部分写（小于一个 beat）再加 partialStoreSwitch（均可为分数，按累计信用折算）
+        double storeCycles = 1.0, storeSwitch = 0.0, partialStoreSwitch = 0.0;
     };
     L2Bank(std::string name, Tick period, P p);
     ResponsePort &cpuSide() { return _cpu; }
@@ -198,6 +201,9 @@ private:
     bool _memBlocked = false;
     bool _needCpuRetry = false;
     Tick _tagBusyUntil = 0;
+    Tick _storeBusyUntil = 0;       // store 通路忙到的时刻
+    double _storeCredit = 0;        // 分数占用的累计信用
+    Addr _lastStoreLine = ~Addr(0);
     CpuPort _cpu;
     MemPort _mem;
     sim::EventFunctionWrapper _respEvent, _memEvent, _cpuRetryEvent;

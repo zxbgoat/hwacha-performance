@@ -307,7 +307,8 @@ void Lane::vmuStep(Cycles now) {
     }
     _tlb.erase(it); _tlb.push_back(page);
     mem::Packet::Cmd cmd = ins.kind == Kind::Amo ? mem::Packet::AtomicReq : isStore ? mem::Packet::WriteReq : mem::Packet::ReadReq;
-    auto *pkt = new mem::Packet(cmd, beat.addr, _p.tlDataBytes);
+    // 单位步长每 beat 16 B；跨步/索引访存每元素一个请求，大小为元素大小（L2 据此区分部分写）
+    auto *pkt = new mem::Packet(cmd, beat.addr, ins.mode == Mode::Unit ? _p.tlDataBytes : ins.elsize);
     auto *bs = new BeatState(); bs->lo = b; bs->strip = s; bs->beat = b->beatPtr;
     pkt->pushSenderState(bs);
     if (!_port.sendTimingReq(pkt)) { _portBlocked = true; _pendingPkt = pkt; _pendingBs = bs; vmuReason = "port_busy"; return; }

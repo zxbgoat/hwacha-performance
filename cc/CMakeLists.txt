@@ -27,3 +27,5 @@ add_test(NAME calibrate COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compare_r
 add_test(NAME calibrate-rodinia COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compare_rodinia.py --no-py --max-err 15)
 add_test(NAME calibrate-l2 COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compare_rtl.py --no-py --max-err 12
          --config ${CMAKE_SOURCE_DIR}/../configs/rtl-hwacha-rocket-l2.json --logs ${CMAKE_SOURCE_DIR}/../rtl/results/rtl-n4096-l2-fixed.log)
+add_test(NAME calibrate-l4 COMMAND python3 ${CMAKE_SOURCE_DIR}/../scripts/compare_rtl.py --no-py --max-err 12
+         --config ${CMAKE_SOURCE_DIR}/../configs/rtl-hwacha-rocket-l4.json --logs ${CMAKE_SOURCE_DIR}/../rtl/results/rtl-n4096-l4.log)
