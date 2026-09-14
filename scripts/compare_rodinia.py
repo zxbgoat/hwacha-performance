@@ -7,7 +7,7 @@
 """
 import argparse, json, os, re, subprocess, sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-NM = os.path.expanduser('~/hwacha-compiler/chipyard/.conda-env/esp-tools/bin/riscv64-unknown-elf-nm')
+NM = os.path.join(os.path.expanduser(os.environ.get('HWACHA_ROOT', '~/hwacha-compiler')), 'chipyard/.conda-env/esp-tools/bin/riscv64-unknown-elf-nm')
 sys.path.insert(0, ROOT)
 from hwacha_perf.trace import load_trace
 
@@ -48,12 +48,19 @@ def main():
     ap.add_argument('--no-py', action='store_true')
     ap.add_argument('--rep', type=int, default=1, help='取第几次运行的踪迹块（0 冷 / 1 warm / 2 warm2）')
     ap.add_argument('--max-err', type=float, default=None)
+    ap.add_argument('--syms', default=None, help='不用 nm 而直接给出各内核的踪迹地址范围：name=lo:hi,...（十六进制）')
     a = ap.parse_args()
+    fixed = {}
+    for kv in (a.syms.split(',') if a.syms else []):
+        name, rng = kv.split('='); lo, hi = rng.split(':'); fixed[name] = (int(lo, 16), int(hi, 16))
     print(f"{'kernel':<13}{'blocks':>7}{'RTL cold':>10}{'RTL warm2':>10}{'C++':>9}{'err':>8}{'Python':>9}{'err':>8}")
     errs = []
     for name, prog, s0, s1, tag in KERNELS:
-        elf = os.path.join(ROOT, 'rtl', 'rodinia', prog + '.riscv')
-        sm = syms(elf); lo, hi = sm[s0], sm[s1]
+        if name in fixed:
+            lo, hi = fixed[name]
+        else:
+            elf = os.path.join(ROOT, 'rtl', 'rodinia', prog + '.riscv')
+            sm = syms(elf); lo, hi = sm[s0], sm[s1]
         trace = os.path.join(ROOT, 'rtl', 'results', f'trace-rodinia-{prog}.log')
         nblk = len(load_trace(trace, lo, hi))
         k = nblk // 3

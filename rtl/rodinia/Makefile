@@ -1,5 +1,5 @@
 # Rodinia（hwacha-cc 编译）内核的 RTL 三次计时：冷 / warm / warm2
-HWROOT  := $(HOME)/hwacha-compiler
+HWROOT  ?= $(HOME)/hwacha-compiler
 APPS    := $(HWROOT)/hwacha-cc/test/apps
 COMMON  := $(HWROOT)/esp-tests/benchmarks/common
 CC      := $(HWROOT)/chipyard/.conda-env/esp-tools/bin/riscv64-unknown-elf-gcc

@@ -7,7 +7,7 @@ UC Berkeley Hwacha 解耦向量取指加速器的文档集与性能模型。
 - `cc/`：C++ 版 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；说明见 `docs/23-cpp-model.md`）
 - `kernels/`：用 Hwacha 汇编写的示例内核（vvadd、saxpy、daxpy、csaxpy、dgemm 分块、模板滤波、gather、FMA 峰值）
 - `configs/`：论文评估配置、开源主线配置、混合精度配置、理想内存配置、RTL 校准配置
-- `rtl/`：在 Chipyard 1.11 `HwachaRocketConfig`（1 lane）与 `HwachaL2RocketConfig`（2 lane）的 Verilator RTL 上运行同一批内核的基准、微基准与探针；`make calibrate` 一键回归（说明见 `docs/24-rtl-calibration.md`）
+- `rtl/`：在 Chipyard 1.11 `HwachaRocketConfig`（1 lane）、`HwachaL2RocketConfig`（2 lane）、`HwachaL4RocketConfig`（4 lane）的 Verilator RTL 上运行同一批内核的基准、微基准、探针与 Rodinia 程序；`rtl/results/` 保存了全部 RTL 计时与踪迹日志，`rtl/patches/` 是复现所需的上游补丁；`make calibrate` 一键回归（说明见 `docs/24-rtl-calibration.md`）
 - `kernels/hcc/`：hwacha-cc 编译得到的 OpenCL 内核向量块（含分歧循环），用于执行驱动模式的校验
 - `tests/`：pytest 回归测试
 - `scripts/summary.py`：批量运行并输出汇总表
@@ -51,3 +51,100 @@ saxpy_vf:
 ```
 
 更多语法（常量步长、偏移、索引访存注解、一致性分支循环次数、混合精度）见 `docs/22-performance-model.md`。
+
+## 在新机器上复现
+
+分三层，后一层依赖前一层。所有已经测得的 RTL 日志都在 `rtl/results/` 里并随仓库提交，所以第一层不需要任何 RISC-V 工具链或 Verilator 就能复现文档里的全部模型误差表；只有想重新计时或改 RTL 时才需要第二、三层。
+
+### 第一层：只跑模型（几分钟）
+
+需要 Python ≥ 3.10、CMake ≥ 3.16、Ninja、支持 C++17 的编译器。
+
+```bash
+git clone <本仓库> hwacha-performance && cd hwacha-performance
+pip install -e .                                   # Python 模型（可选，也可直接 python3 -m hwacha_perf.cli）
+python3 -m pytest -q                               # Python 模型回归
+cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest --output-on-failure && cd ../..
+```
+
+`ctest` 里的 6 个测试就是文档里的校准表：`memtest`/`kernels`（模型自检）、`calibrate`（1 lane：`rtl/results/rtl-n4096-aligned.log` + `micro-n4096-aligned2.log`）、`calibrate-l2`、`calibrate-l4`、`calibrate-rodinia`（踪迹驱动的 Rodinia 内核）。单独看表用比较脚本：
+
+```bash
+python3 scripts/compare_rtl.py --no-py --logs rtl/results/rtl-n4096-aligned.log,rtl/results/micro-n4096-aligned2.log
+python3 scripts/compare_rtl.py --no-py --config configs/rtl-hwacha-rocket-l2.json --logs rtl/results/rtl-n4096-l2-fixed.log,rtl/results/micro-n4096-l2-aligned.log
+python3 scripts/compare_rtl.py --no-py --config configs/rtl-hwacha-rocket-l4.json --logs rtl/results/rtl-n4096-l4.log,rtl/results/micro-n4096-l4.log
+python3 scripts/compare_rodinia.py --no-py            # 需要 rtl/rodinia/*.riscv 的符号表：见第二层；没有工具链时用 --syms 参数（下文）
+python3 scripts/tl_trace_stats.py rtl/results/tlv-micro-n4096-l4.log   # TileLink 通道级跟踪的统计（docs/24 第 10.1/10.9 节）
+python3 scripts/design_space.py > /tmp/design_space.md                  # docs/25-design-space.md 的全部表格（约 5 分钟）
+```
+
+预期结果（C++ 模型，`docs/24-rtl-calibration.md` 10.10 节）：完整基准平均误差 1 lane 2.5%、2 lane 2.6%、4 lane 1.9%；Rodinia 平均 4.2%（最大 9.2%）。`compare_rodinia.py` 默认用 `riscv64-unknown-elf-nm` 读 `rtl/rodinia/<prog>.riscv` 的符号地址来切分踪迹；没有工具链时用 `--syms` 直接给出（五个内核在当前二进制里的地址范围都相同）：
+
+```bash
+python3 scripts/compare_rodinia.py --no-py --syms nn=80002010:800020a0,kmeans_swap=800021a0:800022a0,kmeans_c=80002010:800021a0,pgain=80002030:800022e0,pathfinder=80002010:800024c0
+```
+
+### 第二层：Spike 踪迹与 RISC-V 二进制（约 1 小时，主要是安装）
+
+`rtl/` 与 `scripts/hwacha_trace.py` 假定上游代码树按 [hwacha-compiler](https://github.com/zxbgoat/hwacha-compiler) 仓库的布局放在 `~/hwacha-compiler`（可用环境变量 `HWACHA_ROOT` 或 `make HWROOT=...` 改）：
+
+```
+~/hwacha-compiler/
+├── esp-isa-sim/            git clone https://github.com/ucb-bar/esp-isa-sim（基线 051d820）
+├── esp-tests/              git clone https://github.com/ucb-bar/esp-tests（只用 benchmarks/common 与 env）
+├── chipyard/               git clone -b 1.11.0 https://github.com/ucb-bar/chipyard（第三层才需要；.conda-env/esp-tools 里的 GCC 9.2 + 支持 -march=rv64gcxhwacha 的 binutils 第二层就要用）
+├── hwacha-cc/test/apps/    hwacha-compiler 仓库里 Rodinia 内核的 .s（rtl/rodinia 直接引用）与 bench.s（kernels/hcc）
+├── install/  install-hlog/ 两个 Spike：普通 / 带 H: 提交日志与 HWACHA_TRACE 踪迹
+└── build/
+```
+
+按 hwacha-compiler 的 README 装好 conda、`esp-tools`（`chipyard/build-setup.sh esp-tools --use-lean-conda --skip-toolchain ...`）之后，打本仓库 `rtl/patches/` 里的 Spike 补丁并构建两个 Spike：
+
+```bash
+cd ~/hwacha-compiler
+git -C esp-isa-sim apply $PERF/rtl/patches/esp-isa-sim-base.patch             # $PERF = 本仓库路径
+mkdir -p build/spike && (cd build/spike && ../../esp-isa-sim/configure --prefix=$PWD/../../install && make -j8 && make install)
+git -C esp-isa-sim apply $PERF/rtl/patches/esp-isa-sim-hwacha-trace.patch
+mkdir -p build/spike-hlog && (cd build/spike-hlog && ../../esp-isa-sim/configure --prefix=$PWD/../../install-hlog --enable-hcommitlog && make -j8 && make install)
+```
+
+然后在本仓库里编译基准并在 Spike 上验证、生成踪迹：
+
+```bash
+cd $PERF/rtl
+make bench-n4096.riscv micro-n4096.riscv && make spike | grep -a VERIF     # 应打印 ALL VERIFIED
+make -C rodinia all && for p in nn kmeans pgain pathfinder; do make -s -C rodinia $p.spike | grep -a PASS; done
+cd .. && for p in nn kmeans pgain pathfinder; do python3 scripts/hwacha_trace.py run rtl/rodinia/$p.riscv -o rtl/results/trace-rodinia-$p.log; done
+python3 scripts/compare_rodinia.py --no-py                                   # 现在可以直接用符号表
+```
+
+`kernels/rodinia/*.S` 由 `scripts/extract_hcc_kernel.py` 从 hwacha-cc 的 `.s` 抠出（寄存器配置取自 spike-hlog 的 `H: VSETCFG` 行），文件头有生成命令。
+
+### 第三层：RTL 计时（Verilator 构建约 1 小时，每次计时 10 分钟到 2 小时）
+
+```bash
+cd ~/hwacha-compiler/chipyard
+source ~/miniforge3/etc/profile.d/conda.sh && conda activate $PWD/.conda-env && source env.sh && export RISCV=$PWD/.conda-env/esp-tools
+git -C generators/hwacha apply $PERF/rtl/patches/chipyard-hwacha-generator.patch          # 含 hwacha-compiler 的集成修复 + 本项目的 TileLink 跟踪与 IBoxML 修复
+git -C generators/rocket-chip-inclusive-cache apply $PERF/rtl/patches/chipyard-inclusivecache-tl-trace.patch
+git -C generators/rocket-chip apply $PERF/rtl/patches/chipyard-rocketchip-rocc-fpu.patch
+cp $PERF/rtl/patches/HwachaLaneConfigs.scala generators/chipyard/src/main/scala/config/
+cd sims/verilator
+for c in HwachaRocketConfig HwachaL2RocketConfig HwachaL4RocketConfig; do make CONFIG=$c SIM_OPT_CXXFLAGS=-O1 -j4; done
+```
+
+（内存小于 16 GB 时用 `-j2` 并 `setsid nohup` 分离；第一次全量构建约 1 小时，之后每个配置增量约 5–15 分钟。）仿真器在 `sims/verilator/simulator-chipyard.harness-<Config>`，约 20k 周期/秒；同时跑的仿真不要超过 3–4 个，Verilator 多线程在超载时会因自旋等待慢 10 倍以上。
+
+重新计时并与模型比较（`LANES=1/2/4` 选仿真器，日志写到 `rtl/results/`，文件名带 `-l2`/`-l4` 后缀）：
+
+```bash
+cd $PERF/rtl
+make calibrate LANES=1          # Spike 验证 → 基准 + 微基准 RTL 计时 → compare_rtl.py（超过 MAXERR=12% 返回非零）
+make calibrate LANES=2
+make calibrate LANES=4
+make -C rodinia rtl             # 四个 Rodinia 程序（三次计时；~1 小时）
+make probe6-rtl                 # store 布局探针（docs/24 10.8 节）
+make tl-trace LANES=4           # TileLink 通道级跟踪：+verbose 下慢 30–50 倍，微基准约 30 分钟
+```
+
+每个内核计时三次（冷 / warm / warm2），比较脚本取 warm2（数据驻留 L2、没有 L1D 脏行探测干扰的稳态），模型对应稳态。同一台机器上重复计时的差别通常在 1% 以内，但 store 吞吐会随二进制布局在每 beat 1.03–1.16 拍之间变化（10.8 节），所以换了工具链版本或改了 `main.c` 后 store 密集内核的 RTL 周期数会有几个百分点的漂移，属正常。

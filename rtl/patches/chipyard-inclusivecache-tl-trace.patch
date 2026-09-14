@@ -1,0 +1,33 @@
+diff --git a/design/craft/inclusivecache/src/Scheduler.scala b/design/craft/inclusivecache/src/Scheduler.scala
+index a6701b5..1ff51e4 100644
+--- a/design/craft/inclusivecache/src/Scheduler.scala
++++ b/design/craft/inclusivecache/src/Scheduler.scala
+@@ -250,6 +250,28 @@ class InclusiveCacheBankScheduler(params: InclusiveCacheParameters) extends Modu
+ 
+   // Is there an MSHR free for this request?
+   val mshr_validOH = Cat(mshrs.map(_.io.status.valid).reverse)
++
++  // +hwacha_tl_trace=1: 打印 L2 bank 的内/外侧 TileLink 握手与 MSHR 占用（用于性能模型校准）
++  val l2_trace = freechips.rocketchip.util.PlusArg("hwacha_tl_trace", 0, "trace the L2 bank TileLink channels") =/= 0.U
++  val l2_cyc = RegInit(0.U(64.W))
++  l2_cyc := l2_cyc + 1.U
++  val l2_a_wait = RegInit(0.U(16.W))
++  l2_a_wait := Mux(io.in.a.valid && !io.in.a.ready, l2_a_wait + 1.U, 0.U)
++  when (l2_trace && io.in.a.fire()) {
++    printf("L2 inA cyc=%d op=%d addr=%x src=%d size=%d wait=%d mshr=%d\n", l2_cyc, io.in.a.bits.opcode, io.in.a.bits.address, io.in.a.bits.source, io.in.a.bits.size, l2_a_wait, PopCount(mshr_validOH))
++  }
++  when (l2_trace && io.in.d.fire()) {
++    printf("L2 inD cyc=%d op=%d src=%d\n", l2_cyc, io.in.d.bits.opcode, io.in.d.bits.source)
++  }
++  when (l2_trace && io.out.a.fire()) {
++    printf("L2 outA cyc=%d op=%d addr=%x\n", l2_cyc, io.out.a.bits.opcode, io.out.a.bits.address)
++  }
++  when (l2_trace && io.out.c.fire()) {
++    printf("L2 outC cyc=%d op=%d addr=%x\n", l2_cyc, io.out.c.bits.opcode, io.out.c.bits.address)
++  }
++  when (l2_trace && io.out.d.fire()) {
++    printf("L2 outD cyc=%d op=%d\n", l2_cyc, io.out.d.bits.opcode)
++  }
+   val mshr_free = (~mshr_validOH & prioFilter).orR
+ 
+   // Fanout the request to the appropriate handler (if any)

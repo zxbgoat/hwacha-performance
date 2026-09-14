@@ -7,7 +7,7 @@
   python3 scripts/hwacha_trace.py stats <trace.log> [--range lo:hi]        # 每块指令数 / 活跃元素比例
 """
 import argparse, os, re, subprocess, sys
-HW = os.path.expanduser('~/hwacha-compiler')
+HW = os.path.expanduser(os.environ.get('HWACHA_ROOT', '~/hwacha-compiler'))
 SPIKE = os.path.join(HW, 'install-hlog', 'bin', 'spike')
 NM = os.path.join(HW, 'chipyard', '.conda-env', 'esp-tools', 'bin', 'riscv64-unknown-elf-nm')
 

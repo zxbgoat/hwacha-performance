@@ -1,4 +1,4 @@
-HWROOT  := $(HOME)/hwacha-compiler
+HWROOT  ?= $(HOME)/hwacha-compiler
 COMMON  := $(HWROOT)/esp-tests/benchmarks/common
 CC      := $(HWROOT)/chipyard/.conda-env/esp-tools/bin/riscv64-unknown-elf-gcc
 CFLAGS  := -DPREALLOCATE=1 -DHAVE_HAND -mcmodel=medany -static -std=gnu99 -O2 -fno-common -fno-builtin-printf \

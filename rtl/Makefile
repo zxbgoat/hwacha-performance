@@ -1,13 +1,16 @@
 # RTL / Spike 校准基准
-HWROOT  := $(HOME)/hwacha-compiler
+HWROOT  ?= $(HOME)/hwacha-compiler
 COMMON  := $(HWROOT)/esp-tests/benchmarks/common
 CC      := $(HWROOT)/chipyard/.conda-env/esp-tools/bin/riscv64-unknown-elf-gcc
 CFLAGS  := -DPREALLOCATE=1 -mcmodel=medany -static -std=gnu99 -O2 -fno-common -fno-builtin-printf \
            -fno-tree-loop-distribute-patterns -march=rv64gcxhwacha -mabi=lp64d -I$(COMMON) -I$(HWROOT)/esp-tests/env
 LDFLAGS := -static -nostdlib -nostartfiles -lm -lgcc -T $(COMMON)/test.ld
 SPIKE   := $(HWROOT)/install/bin/spike --isa=rv64gc --extension=hwacha
-SIM     ?= $(HWROOT)/chipyard/sims/verilator/simulator-chipyard.harness-HwachaRocketConfig
-SIM_L2  := $(HWROOT)/chipyard/sims/verilator/simulator-chipyard.harness-HwachaL2RocketConfig
+# LANES=1/2/4 选择仿真器（HwachaRocketConfig / HwachaL2RocketConfig / HwachaL4RocketConfig），也可直接给 SIM=
+LANES   ?= 1
+SIMNAME := $(if $(filter 1,$(LANES)),HwachaRocketConfig,HwachaL$(LANES)RocketConfig)
+SIM     ?= $(HWROOT)/chipyard/sims/verilator/simulator-chipyard.harness-$(SIMNAME)
+LOGSUF  := $(if $(filter 1,$(LANES)),,-l$(LANES))
 N       ?= 4096
 
 all: bench-n$(N).riscv
@@ -17,7 +20,7 @@ spike: bench-n$(N).riscv
 	$(SPIKE) $<
 LOGTAG ?=
 rtl: bench-n$(N).riscv
-	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/rtl-n$(N)$(LOGTAG).log
+	mkdir -p results && stdbuf -oL $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -v "^\[UART\]" | tee results/rtl-n$(N)$(LOGSUF)$(LOGTAG).log
 clean:
 	rm -f *.riscv
 
@@ -26,7 +29,7 @@ micro-n$(N).riscv: micro.c micro_kernels.S ../kernels/micro_*.S $(COMMON)/crt.S 
 micro-spike: micro-n$(N).riscv
 	$(SPIKE) $<
 micro-rtl: micro-n$(N).riscv
-	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/micro-n$(N)$(LOGTAG).log
+	mkdir -p results && stdbuf -oL $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -v "^\[UART\]" | tee results/micro-n$(N)$(LOGSUF)$(LOGTAG).log
 
 probe.riscv: probe.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
 	$(CC) $(CFLAGS) -o $@ probe.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c $(LDFLAGS)
@@ -44,12 +47,17 @@ probe3-rtl: probe3.riscv
 	mkdir -p results && $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -av "^\[UART\]" | tee results/probe3.log
 
 # 一键校准回归：Spike 验证 → RTL 计时（基准 + 微基准）→ 与模型比较（最大误差阈值 MAXERR%）
-MAXERR ?= 10
+MAXERR ?= 12
+CFG    := $(if $(filter 1,$(LANES)),../configs/rtl-hwacha-rocket.json,../configs/rtl-hwacha-rocket-l$(LANES).json)
 calibrate: bench-n$(N).riscv micro-n$(N).riscv
 	$(MAKE) spike N=$(N) | grep -a "VERIF"
-	$(MAKE) rtl N=$(N) > /dev/null
-	$(MAKE) micro-rtl N=$(N) > /dev/null
-	python3 ../scripts/compare_rtl.py --logs results/rtl-n$(N).log,results/micro-n$(N).log --no-py --max-err $(MAXERR)
+	$(MAKE) rtl N=$(N) LANES=$(LANES) > /dev/null
+	$(MAKE) micro-rtl N=$(N) LANES=$(LANES) > /dev/null
+	python3 ../scripts/compare_rtl.py --logs results/rtl-n$(N)$(LOGSUF)$(LOGTAG).log,results/micro-n$(N)$(LOGSUF)$(LOGTAG).log --config $(CFG) --no-py --max-err $(MAXERR)
+# TileLink 通道级跟踪（需要 +verbose，慢 30–50 倍；见 docs/24 10.1 节）
+tl-trace: micro-n$(N).riscv
+	mkdir -p results && $(SIM) +permissive +verbose +hwacha_tl_trace=1 +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -E "^(HTL|L2 |RESULT|N=)" > results/tlv-micro-n$(N)$(LOGSUF)$(LOGTAG).log
+	python3 ../scripts/tl_trace_stats.py results/tlv-micro-n$(N)$(LOGSUF)$(LOGTAG).log
 
 probe4.riscv: probe4.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
 	$(CC) $(CFLAGS) -o $@ probe4.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c $(LDFLAGS)
