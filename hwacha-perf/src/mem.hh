@@ -158,6 +158,7 @@ public:
         // 冷启动：标量核刚写过、还留在 L1D 里的脏行第一次被向量访存触到时，L2 要先探测（Probe）L1D 拿回数据，
         // 该请求多花 probeCycles 拍并占住 bank（RTL 实测每行约 4 拍）。markProbe() 标记这些行
         unsigned probeCycles = 0;
+        bool storeBlocksLoads = true;   // store 通路忙时是否也阻塞 load（A 通道按序接受）
     };
     L2Bank(std::string name, Tick period, P p);
     ResponsePort &cpuSide() { return _cpu; }

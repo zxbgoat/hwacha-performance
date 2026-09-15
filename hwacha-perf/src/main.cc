@@ -66,6 +66,7 @@ int main(int argc, char **argv) {
     lp.storeCycles = memP.getDouble("l2_store_beat_cycles", 1.0);
     lp.storeSwitch = memP.getDouble("l2_store_switch", 0.0);
     lp.probeCycles = (unsigned)memP.getInt("l1d_probe_cycles", 4);
+    lp.storeBlocksLoads = memP.getBool("l2_store_blocks_loads", true);
     lp.partialStoreSwitch = memP.getDouble("l2_partial_store_switch", 0.0);
     {   // "1:0.05,2:0.09,4:0.2,8:0.75,16:0.97"
         std::string tbl = memP.getString("l2_store_conflict", "");

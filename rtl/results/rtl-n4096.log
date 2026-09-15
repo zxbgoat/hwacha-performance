@@ -11,3 +11,6 @@ RESULT daxpy_warm2 6505 cycles 4096 elems
 RESULT csaxpy 4985 cycles 4096 elems
 RESULT csaxpy_warm 4317 cycles 4096 elems
 RESULT csaxpy_warm2 3859 cycles 4096 elems
+RESULT sfilter 5798 cycles 4096 elems
+RESULT sfilter_warm 5621 cycles 4096 elems
+RESULT sfilter_warm2 5264 cycles 4096 elems

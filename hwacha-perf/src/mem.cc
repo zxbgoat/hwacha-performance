@@ -216,7 +216,8 @@ double L2Bank::storeBeatCost(Addr la, unsigned size) {
 }
 
 bool L2Bank::recvTimingReq(Packet *pkt) {
-    Tick busy = std::max(_tagBusyUntil, pkt->isWrite() ? _storeBusyUntil : Tick(0));
+    // InclusiveCache 的 A 通道按序接受：store 通路忙时后面的 load 也进不来（RTL 8 lane micro_ld4st1：4 个 load 流夹 1 个 store 流慢 27%）
+    Tick busy = std::max(_tagBusyUntil, _p.storeBlocksLoads || pkt->isWrite() ? _storeBusyUntil : Tick(0));
     if (curTick() < busy) {
         _needCpuRetry = true;
         ++*stBlockedTag;

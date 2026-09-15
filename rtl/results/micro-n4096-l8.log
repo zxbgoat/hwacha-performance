@@ -32,3 +32,6 @@ RESULT micro_sstride_warm 7244 cycles 4096 elems
 RESULT micro_st2 7127 cycles 4096 elems
 RESULT micro_st2_warm 7120 cycles 4096 elems
 RESULT micro_ld4st1 16165 cycles 4096 elems
+RESULT micro_ld4st1_warm 12106 cycles 4096 elems
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL8RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish
