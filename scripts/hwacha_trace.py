@@ -7,6 +7,8 @@
   python3 scripts/hwacha_trace.py stats <trace.log> [--range lo:hi]        # 每块指令数 / 活跃元素比例
 """
 import argparse, os, re, subprocess, sys
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from logio import openlog, resolve
 HW = os.path.expanduser(os.environ.get('HWACHA_ROOT', '~/hwacha-compiler'))
 SPIKE = os.path.join(HW, 'install-hlog', 'bin', 'spike')
 NM = os.path.join(HW, 'chipyard', '.conda-env', 'esp-tools', 'bin', 'riscv64-unknown-elf-nm')
@@ -30,7 +32,7 @@ def main():
     if a.cmd == 'run':
         env = dict(os.environ, HWACHA_TRACE=os.path.abspath(a.o))
         r = subprocess.run([SPIKE, '--isa=rv64gc', '--extension=hwacha', a.prog], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
-        n = sum(1 for l in open(a.o, errors='replace') if l.startswith('H: WT '))
+        n = sum(1 for l in openlog(a.o) if l.startswith('H: WT '))
         print(f'{a.o}: {n} worker-thread instructions, exit {r.returncode}')
     elif a.cmd == 'range':
         lo, hi = sym_range(a.prog, a.symbol)
@@ -38,7 +40,7 @@ def main():
     else:
         lo, hi = (int(x, 16) for x in a.range.split(':')) if a.range else (0, 1 << 64)
         blocks, cur = [], None
-        for l in open(a.trace, errors='replace'):
+        for l in openlog(a.trace):
             if not l.startswith('H: WT '):
                 continue
             pc = int(re.search(r'pc=([0-9a-f]+)', l).group(1), 16)

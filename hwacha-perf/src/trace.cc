@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <zlib.h>
 
 namespace hw {
 
@@ -18,8 +19,18 @@ static unsigned decField(const std::string &line, const char *key) {
 }
 
 Trace Trace::load(const std::string &path, uint64_t lo, uint64_t hi, uint64_t base) {
-    std::ifstream f(path);
-    if (!f) sim::fatal("cannot open trace " + path);
+    // zlib 的 gzopen 对未压缩文件也能透明读取，所以 .log 与 .log.gz 都可以
+    gzFile gz = gzopen(path.c_str(), "rb");
+    if (!gz) sim::fatal("cannot open trace " + path);
+    static std::vector<char> buf(1 << 16);   // act 掩码行可达数千字符
+    auto nextLine = [&](std::string &out) -> bool {
+        out.clear();
+        while (gzgets(gz, buf.data(), (int)buf.size())) {
+            out += buf.data();
+            if (!out.empty() && out.back() == '\n') { out.pop_back(); return true; }
+        }
+        return !out.empty();
+    };
     Trace t;
     TraceBlock cur;
     bool inBlock = false;
@@ -30,7 +41,7 @@ Trace Trace::load(const std::string &path, uint64_t lo, uint64_t hi, uint64_t ba
         if (inBlock && !cur.instrs.empty() && cur.startPc >= lo && cur.startPc < hi) t.blocks.push_back(cur);
         cur = TraceBlock(); inBlock = false;
     };
-    while (std::getline(f, line)) {
+    while (nextLine(line)) {
         if (line.rfind("H: WT ", 0) == 0) {
             TraceInstr ti;
             ti.pc = hexField(line, "pc=");
@@ -67,6 +78,7 @@ Trace Trace::load(const std::string &path, uint64_t lo, uint64_t hi, uint64_t ba
         }
     }
     flush();
+    gzclose(gz);
     return t;
 }
 

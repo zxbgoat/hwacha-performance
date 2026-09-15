@@ -1,0 +1,16 @@
+N=1024
+RESULT hcc_saxpy 1844 cycles 1024 elems
+RESULT hcc_saxpy_warm 1436 cycles 1024 elems
+RESULT hcc_saxpy_warm2 1305 cycles 1024 elems
+RESULT hand_saxpy 1679 cycles 1024 elems
+RESULT hand_saxpy_warm 1416 cycles 1024 elems
+RESULT hand_saxpy_warm2 1318 cycles 1024 elems
+RESULT hcc_clamp 1181 cycles 1024 elems
+RESULT hcc_clamp_warm 969 cycles 1024 elems
+RESULT hcc_clamp_warm2 928 cycles 1024 elems
+RESULT hand_clamp 1188 cycles 1024 elems
+RESULT hand_clamp_warm 993 cycles 1024 elems
+RESULT hand_clamp_warm2 950 cycles 1024 elems
+RESULT hcc_divloop 5214 cycles 1024 elems
+RESULT hcc_divloop_warm 4868 cycles 1024 elems
+RESULT hcc_divloop_warm2 4812 cycles 1024 elems

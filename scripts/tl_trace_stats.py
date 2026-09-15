@@ -5,6 +5,8 @@
 用法: python3 scripts/tl_trace_stats.py rtl/results/tlv-micro-n4096.log [--gaps]
 """
 import argparse, re, collections
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from logio import openlog, resolve
 A_RE = re.compile(r'^HTL A cyc=\s*(\d+) op=\s*(\d+) addr=\s*([0-9a-f]+) src=\s*(\d+) wait=\s*(\d+)')
 D_RE = re.compile(r'^HTL D cyc=\s*(\d+) op=\s*(\d+) src=\s*(\d+) wait=\s*(\d+)')
 L2A_RE = re.compile(r'^L2 inA cyc=\s*(\d+) op=\s*(\d+) addr=\s*([0-9a-f]+) src=\s*(\d+) size=\s*(\d+) wait=\s*(\d+) mshr=\s*(\d+)')
@@ -36,7 +38,7 @@ def main():
         if a.gaps:
             tot = sum(gaps.values())
             print('    gap histogram: ' + ', '.join(f'{g}:{c/tot*100:.1f}%' for g, c in sorted(gaps.items())[:12]))
-    for line in open(a.log, errors='replace'):
+    for line in openlog(a.log):
         m = A_RE.match(line)
         if m:
             seg['A'].append((int(m[1]), int(m[2]), int(m[3], 16), int(m[4]), int(m[5]))); continue

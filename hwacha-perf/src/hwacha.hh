@@ -28,6 +28,10 @@ struct HwachaParams {
     double storeBeatCycles = 1.0;    // 每个 store beat 占用 VMU 端口的周期数（RTL 校准用，可为分数）
     double loadBeatCycles = 1.0;
     unsigned vfBlockOverhead = 0;    // 每个 vf 块额外的固定周期（校准用）
+    bool seqAgeRule = true;
+    bool pluPort = true;
+    unsigned pluOccupancy = 0;       // 谓词逻辑单元每 strip 的占用拍数（0 = 每拍一个 strip）             // 谓词逻辑单元（vpop 等）走独立的 VIPU 调度口          // 序列器 age 规则（见 Lane::schedule）；false 为旧的严格最老优先
+    unsigned vfLaneSyncCycles = 0;   // 多 lane 时每个 vf 块再加的固定周期（跨 lane 同步/收尾；RTL micro_empty 校准）
     bool buildVru = true;
     unsigned vruMaxOutstanding = 20, vruEarlyIgnore = 1;
     uint64_t vruMaxRunaheadBytes = 1ull << 24;
@@ -97,6 +101,7 @@ struct LaneOp {
     std::vector<Cycles> lastWrite;
     unsigned stripPtr = 0, beatPtr = 0, stripsSent = 0;
     Cycles vmuStart = 0;
+    Cycles lastIssue = NoCycle;   // 上一个 strip 的发射拍：RTL 序列器的 age 规则——同一条目 nBanks 拍内只能发一个 strip
     bool finished = false;
     Cycles finishCycle = NoCycle;
 

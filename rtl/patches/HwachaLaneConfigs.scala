@@ -19,3 +19,15 @@ class HwachaL8RocketConfig extends Config(
 class HwachaL16RocketConfig extends Config(
   new hwacha.WithNLanes(16) ++
   new HwachaRocketConfig)
+
+// 校准 VRU 与多 bank L2 用：关闭 VRU 的 1 lane；2 lane + 2 个 L2 bank
+class WithHwachaNoVRU extends Config((site, here, up) => {
+  case hwacha.HwachaBuildVRU => false
+})
+class HwachaNoVRURocketConfig extends Config(
+  new WithHwachaNoVRU ++
+  new HwachaRocketConfig)
+class HwachaL2B2RocketConfig extends Config(
+  new hwacha.WithNLanes(2) ++
+  new freechips.rocketchip.subsystem.WithNBanks(2) ++
+  new HwachaRocketConfig)

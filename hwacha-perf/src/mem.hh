@@ -147,21 +147,12 @@ public:
         unsigned tgtsPerMshr = 8;
         unsigned writeBuffers = 8;
         bool supportsAtomics = true;
-        // store 通路（InclusiveCache 对 PutPartial 的读-改-写）：每个 store beat 占用 storeCycles 拍；
-        // 与上一个 store beat 不在同一行时再加 storeSwitch，部分写（小于一个 beat）再加 partialStoreSwitch（均可为分数，按累计信用折算）
+        // store 通路（InclusiveCache 对 PutPartial 的读-改-写，所有 lane 共享；docs/24 10.9–10.10 节）：
+        //   每个 store beat 占用 storeCycles 拍；与上一个 store beat 不在同一行时加 storeSwitch，部分写（小于一个 beat）再加 partialStoreSwitch；
+        //   再加 storeConflict 表按"并发行数 n"插值出的附加拍数——n = 当前行上一次出现（最近 storeWindow 个 beat 内）以来经过的不同行数 + 1，
+        //   顺序流 n = 1，L 条 lane 交错访问不同行则 n = L，行首拍沿用上一拍的 n；表按 log2(n) 线性插值，为空则关闭。
+        //   分数代价按累计信用折算成整拍。三种机械模型（命中 MSHR 池、读-改-写合并窗口、子 bank 冲突排队）都拟合不了 1–16 lane，已删除。
         double storeCycles = 1.0, storeSwitch = 0.0, partialStoreSwitch = 0.0;
-        // 命中 MSHR 池（InclusiveCache：每个请求都要一个 MSHR，同一行的后续请求排在它后面串行服务；普通 MSHR 只有 mshrs-2 个）
-        // hitMshrs = 0 关闭。行 MSHR 从第一个请求起分配，最后一个请求服务完再过 mshrRelease 拍释放；池满则阻塞输入
-        unsigned hitMshrs = 0, hitAllocLatency = 2, mshrRelease = 4, loadRelease = 2;
-        double storeService = 5.0, partialStoreService = 5.0, loadService = 1.0;
-        // store 读-改-写合并窗口：同一行上一次 RMW 开始后 rmwMergeWindow 拍内到达的 store beat 合并进该次 RMW（只占 storeCycles）；
-        // 否则新开一次 RMW，额外占共享数据口 rmwExtra 拍（可为分数）。多 lane 交错访问不同行时合并机会减少，store 吞吐下降
-        unsigned rmwMergeWindow = 0; double rmwExtra = 1.0;
-        // store 数据阵列子 bank 模型：BankedStore 按行内 16 B 位置分 storeBanks 个子 bank，每个 store beat 的读-改-写占其子 bank rmwSlots 拍；
-        // 请求在子 bank 上要等超过 rmwQueue 拍时阻塞输入（InclusiveCache 的 A 通道按序接受，多 lane 同一 beat 位置的 store 撞同一个子 bank）
-        unsigned storeBanks = 0; double rmwSlots = 2.0; unsigned rmwQueue = 2;
-        // 经验模型：store beat 的附加代价随"最近 storeWindow 个 store beat 里被交错访问的行数 n"增长：n = 当前行上一次出现以来经过的不同行数 + 1（顺序流 n=1，L 条 lane 交错访问不同行则 n=L；行的首拍沿用上一拍的 n）（多 lane 交错访问不同行时
-        // 读-改-写在数据阵列上的冲突增多）。storeConflict 是 (n, 附加拍数) 表，按 log2(n) 线性插值；为空则关闭
         std::vector<std::pair<unsigned, double>> storeConflict; unsigned storeWindow = 32;
     };
     L2Bank(std::string name, Tick period, P p);
@@ -215,16 +206,13 @@ private:
     bool _memBlocked = false;
     bool _needCpuRetry = false;
     Tick _tagBusyUntil = 0;
-    Tick _storeBusyUntil = 0;       // store 通路忙到的时刻
-    struct HitMshr { Tick busyUntil = 0, releaseAt = 0; double credit = 0; };
-    std::map<Addr, Tick> _rmwStart;     // 行地址 -> 上一次 RMW 开始时刻
-    std::vector<Tick> _storeBankFree;   // 每个子 bank 忙到的时刻
-    std::deque<Addr> _recentStoreBeats;       // 最近 storeWindow 个 store beat 的行（冲突表模型）
-    double _lastStoreConcurrency = 1.0;
-    std::vector<double> _storeBankCredit;
-    std::map<Addr, HitMshr> _hitMshrs;   // 行地址 -> 命中 MSHR
-    double _storeCredit = 0;        // 分数占用的累计信用
+    // store 通路状态
+    Tick _storeBusyUntil = 0;             // store 通路忙到的时刻
+    double _storeCredit = 0;              // 分数占用的累计信用
     Addr _lastStoreLine = ~Addr(0);
+    std::deque<Addr> _recentStoreBeats;   // 最近 storeWindow 个 store beat 的行
+    double _lastStoreConcurrency = 1.0;
+    double storeBeatCost(Addr line, unsigned size);   // 一个 store beat 占用 store 通路的拍数
     CpuPort _cpu;
     MemPort _mem;
     sim::EventFunctionWrapper _respEvent, _memEvent, _cpuRetryEvent;

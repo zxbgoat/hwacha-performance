@@ -1,5 +1,5 @@
 .text
-.globl micro_load_vf, micro_store_vf, micro_copy_vf, micro_load2_vf, micro_alu_vf, micro_fma_dep_vf, micro_empty_vf, micro_ldst_vf, micro_stld_vf, micro_inplace_vf, micro_sload_vf, micro_smul_vf, micro_salu_vf, micro_branch_vf, micro_fsqrt_s_vf, micro_fdiv_s_vf, micro_fdiv_d_vf, micro_lstride_vf, micro_sstride_vf
+.globl micro_load_vf, micro_store_vf, micro_copy_vf, micro_load2_vf, micro_alu_vf, micro_fma_dep_vf, micro_empty_vf, micro_ldst_vf, micro_stld_vf, micro_inplace_vf, micro_sload_vf, micro_smul_vf, micro_salu_vf, micro_branch_vf, micro_fsqrt_s_vf, micro_fdiv_s_vf, micro_fdiv_d_vf, micro_lstride_vf, micro_sstride_vf, micro_st2_vf, micro_ld4st1_vf
 .align 3
 #include "../kernels/micro_load.S"
 .align 3
@@ -38,3 +38,7 @@
 #include "../kernels/micro_lstride.S"
 .align 3
 #include "../kernels/micro_sstride.S"
+.align 3
+#include "../kernels/micro_st2.S"
+.align 3
+#include "../kernels/micro_ld4st1.S"

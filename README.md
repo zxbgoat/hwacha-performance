@@ -66,7 +66,7 @@ python3 scripts/compare_rtl.py --logs rtl/results/rtl-n4096-aligned.log,rtl/resu
 python3 scripts/compare_rtl.py --config configs/rtl-hwacha-rocket-l2.json --logs rtl/results/rtl-n4096-l2-fixed.log,rtl/results/micro-n4096-l2-aligned.log
 python3 scripts/compare_rtl.py --config configs/rtl-hwacha-rocket-l4.json --logs rtl/results/rtl-n4096-l4.log,rtl/results/micro-n4096-l4.log
 python3 scripts/compare_rodinia.py            # 需要 rtl/rodinia/*.riscv 的符号表：见第二层；没有工具链时用 --syms 参数（下文）
-python3 scripts/tl_trace_stats.py rtl/results/tlv-micro-n4096-l4.log   # TileLink 通道级跟踪的统计（docs/24 第 10.1/10.9 节）
+python3 scripts/tl_trace_stats.py rtl/results/tlv-micro-n4096-l4.log   # TileLink 通道级跟踪的统计（docs/24 第 10.1/10.9 节；大日志以 .log.gz 存放，脚本与模型都能直接读，给 .log 路径会自动找 .gz）
 python3 scripts/design_space.py > /tmp/design_space.md                  # docs/25-design-space.md 的全部表格（约 5 分钟）
 ```
 

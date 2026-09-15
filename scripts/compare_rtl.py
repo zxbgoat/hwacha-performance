@@ -4,12 +4,14 @@
 用法: python3 scripts/compare_rtl.py [--logs rtl/results/rtl-n4096.log,...] [--config configs/rtl-hwacha-rocket.json]
 """
 import argparse, glob, json, os, re, subprocess, sys
+import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from logio import openlog, resolve
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 
 def rtl_results(paths):
     out = {}
     for p in paths:
-        for line in open(p, errors='replace'):
+        for line in openlog(p):
             m = re.match(r'RESULT (\S+) (\d+) cycles (\d+) elems', line)
             if m:
                 out[(m.group(1), int(m.group(3)))] = int(m.group(2))

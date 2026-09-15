@@ -13,6 +13,8 @@ add_library(hwsim STATIC
 target_include_directories(hwsim PUBLIC src)
 
 add_executable(hwacha-sim src/main.cc)
+find_package(ZLIB REQUIRED)
+target_link_libraries(hwsim PUBLIC ZLIB::ZLIB)
 target_link_libraries(hwacha-sim hwsim)
 
 add_executable(memtest tests/memtest.cc)

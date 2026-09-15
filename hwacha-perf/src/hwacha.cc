@@ -28,7 +28,7 @@ HwachaParams HwachaParams::from(const sim::Params &p) {
     I("cmdq_len", h.cmdqLen); I("vf_fetch_latency", h.vfFetchLatency); I("scalar_smu_latency", h.scalarSmuLatency);
     I("scalar_fpu_latency", h.scalarFpuLatency); I("scalar_muldiv_latency", h.scalarMulDivLatency);
     I("branch_resolve_latency", h.branchResolveLatency); I("ctrl_cycles_per_iter", h.ctrlCyclesPerIter);
-    I("branch_strip_cycles", h.branchStripCycles);
+    I("branch_strip_cycles", h.branchStripCycles); h.seqAgeRule = p.getBool("seq_age_rule", h.seqAgeRule); h.pluPort = p.getBool("plu_port", h.pluPort); I("plu_occupancy", h.pluOccupancy);
     I("n_vmt_entries", h.nVmtEntries); I("vmu_issue_latency", h.vmuIssueLatency); I("vlu_latency", h.vluLatency);
     I("vsdq_beats", h.vsdqBeats); I("vldq_beats", h.vldqBeats); I("vvaq_entries", h.vvaqEntries);
     I("brq_depth", h.brqDepth); I("bwq_depth", h.bwqDepth); I("tl_data_bytes", h.tlDataBytes);
@@ -39,7 +39,7 @@ HwachaParams HwachaParams::from(const sim::Params &p) {
     h.freqGhz = p.getDouble("freq_ghz", h.freqGhz);
     h.storeBeatCycles = p.getDouble("store_beat_cycles", h.storeBeatCycles);
     h.loadBeatCycles = p.getDouble("load_beat_cycles", h.loadBeatCycles);
-    I("vf_block_overhead", h.vfBlockOverhead);
+    I("vf_block_overhead", h.vfBlockOverhead); I("vf_lane_sync_cycles", h.vfLaneSyncCycles);
     h.commitLog = p.getBool("commit_log", false);
     return h;
 }
@@ -73,7 +73,7 @@ static unsigned stagesFor(const Instr &ins, const HwachaParams &p) {
 }
 
 static const std::map<std::string, std::vector<unsigned>> LATCH_GROUPS = {
-    {"fma0", {0, 1, 2}}, {"imul", {0, 1}}, {"fconv", {2}}, {"fma1", {3, 4, 5}}, {"vqu", {3, 4}}, {"fcmp", {3, 4}}, {"vgu", {5}}};
+    {"fma0", {0, 1, 2}}, {"imul", {0, 1}}, {"fconv", {2}}, {"fma1", {3, 4, 5}}, {"vqu", {3, 4}}, {"fcmp", {3, 4}}, {"vgu", {5}}, {"plu", {}}};
 
 // --------------------------------------------------------------- LaneOp
 unsigned LaneOp::nElems(unsigned k) const {
@@ -99,7 +99,7 @@ Lane::Lane(Hwacha &h, int id)
     : _h(h), _p(h.params()), _id(id), _port(h.name() + ".lane" + std::to_string(id) + ".vmu_port", *this, &h),
       _vmuCycle(h.vmuCycle) {
     _bankWrite.resize(_p.nBanks);
-    for (const char *u : {"fma0", "fma1", "imul", "fconv", "fcmp", "vqu", "vgu", "fdiv", "idiv"}) _units.emplace(u, Timeline());
+    for (const char *u : {"fma0", "fma1", "imul", "fconv", "fcmp", "vqu", "vgu", "fdiv", "idiv", "plu"}) _units.emplace(u, Timeline());
     _latches.resize(6);
     _bwq.resize(_p.nBanks);
 }
@@ -155,24 +155,47 @@ bool Lane::schedule(Cycles now) {
     std::string reason = ops.empty() ? "empty" : "drain";
     bool issued = false;
     LaneOp *first = nullptr;
-    for (int port = 0; port < 2; ++port) {
+    // 三个发射口：0 = 展开器（VXU 算术/访存地址）、1 = VSU/VGU/VQU、2 = VIPU（谓词逻辑 vpop 等有自己的调度器与端口，不参与 age 优先级）
+    for (int port = 0; port < 3; ++port) {
+        // RTL 序列器（sequencer-lane.scala）：条目发出一个 strip 后 age := nBanks-1 并逐拍递减；每拍先在 age 为 0 的就绪条目里
+        // 按年龄找第一个（first_sched），没有才在全部就绪条目里找（second_sched）。于是有多个就绪条目时它们轮流占用发射槽
+        // （分支的谓词归约借此与其他指令重叠），只有一个条目时它仍可每拍发射。
+        bool got = false;
+        // RTL：VSU（store 数据）与 VGU（索引地址）路径只考虑各自最老的条目（sequencer-lane.scala 的 first = ff(active.vsu / vgu)），
+        // 否则年轻的 store 先占满 VSDQ 会把 VMU 队头的老 store 卡死
+        LaneOp *oldestStore = nullptr, *oldestGather = nullptr;
         for (LaneOp *b : ops) {
-            if (b == first || b->finished || b->nextStrip >= b->nstrips) continue;
+            if (b->finished || b->nextStrip >= b->nstrips) continue;
             const Instr &ins = *b->op->ins;
-            if ((ins.kind == Kind::Load || ins.kind == Kind::PMem) && ins.mode != Mode::Indexed) continue;
-            if (port == 1 && !secondPortKind(ins)) continue;
-            unsigned k = b->nextStrip;
-            const char *r = tryIssue(*b, k, now);
-            if (!r) {
-                b->nextStrip++;
-                b->issue[k] = now;
-                b->readTime[k] = now;
-                ++stripsIssued;
-                issued = true;
-                first = b;
-                break;
+            if (!oldestStore && ins.isStore()) oldestStore = b;
+            if (!oldestGather && ins.kind == Kind::Load && ins.mode == Mode::Indexed) oldestGather = b;
+        }
+        for (int pass = 0; pass < 2 && !got; ++pass) {
+            bool strict = _p.seqAgeRule && pass == 0;
+            for (LaneOp *b : ops) {
+                if (b == first || b->finished || b->nextStrip >= b->nstrips) continue;
+                const Instr &ins = *b->op->ins;
+                if (ins.isStore() && b != oldestStore) continue;
+                if (ins.kind == Kind::Load && ins.mode == Mode::Indexed && b != oldestGather) continue;
+                if ((ins.kind == Kind::Load || ins.kind == Kind::PMem) && ins.mode != Mode::Indexed) continue;
+                bool plu = ins.kind == Kind::Plu && _p.pluPort;
+                if (port == 2 ? !plu : (plu || (port == 1) != secondPortKind(ins))) continue;
+                if (strict && !plu && b->lastIssue != NoCycle && now < b->lastIssue + _p.nBanks) continue;
+                unsigned k = b->nextStrip;
+                const char *r = tryIssue(*b, k, now);
+                if (!r) {
+                    b->nextStrip++;
+                    b->lastIssue = now;
+                    b->issue[k] = now;
+                    b->readTime[k] = now;
+                    ++stripsIssued;
+                    issued = true; got = true;
+                    first = b;
+                    break;
+                }
+                if (port == 0 && !strict && (reason == "drain" || reason == "empty")) reason = r;
             }
-            if (port == 0 && (reason == "drain" || reason == "empty")) reason = r;
+            if (!_p.seqAgeRule) break;
         }
     }
     if (!issued) lastReason = reason;
@@ -213,6 +236,10 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
     } else if (skind == "alu" || skind == "cmp" || skind == "plu") {
         lat = stagesFor(ins, _p);
         writeTime = fop + lat;
+        if (skind == "plu" && _p.pluOccupancy) {   // 谓词逻辑单元每 strip 占用 pluOccupancy 拍（校准用）
+            if (!_units["plu"].free(fop, _p.pluOccupancy)) return "fu";
+            unit = "plu"; occupancy = _p.pluOccupancy;
+        }
     } else if (skind == "fdiv" || skind == "idiv" || skind == "rfirst" || skind == "branch") {
         if (skind == "branch") occupancy = std::max(occupancy, _p.branchStripCycles);
         if (!_units["vqu"].free(fop, occupancy)) return "fu";
@@ -600,7 +627,7 @@ void Hwacha::scalarStep(Cycles now) {
             }
             _blocks.emplace_back(new Block{(int)_blocks.size(), _vl});
             _curBlock = _blocks.back().get(); _curBlock->start = now;
-            _stallUntil = now + _p.vfFetchLatency + _p.vfBlockOverhead;
+            _stallUntil = now + _p.vfFetchLatency + _p.vfBlockOverhead + (_p.nLanes > 1 ? _p.vfLaneSyncCycles : 0);
         }
         note("command");
         return;

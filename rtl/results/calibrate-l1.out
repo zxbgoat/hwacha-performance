@@ -1,0 +1,4 @@
+/home/tesla/hwacha-compiler/chipyard/.conda-env/esp-tools/bin/riscv64-unknown-elf-gcc -DPREALLOCATE=1 -mcmodel=medany -static -std=gnu99 -O2 -fno-common -fno-builtin-printf -fno-tree-loop-distribute-patterns -march=rv64gcxhwacha -mabi=lp64d -I/home/tesla/hwacha-compiler/esp-tests/benchmarks/common -I/home/tesla/hwacha-compiler/esp-tests/env -DN=4096 -o bench-n4096.riscv main.c kernels.S /home/tesla/hwacha-compiler/esp-tests/benchmarks/common/crt.S /home/tesla/hwacha-compiler/esp-tests/benchmarks/common/syscalls.c -static -nostdlib -nostartfiles -lm -lgcc -T /home/tesla/hwacha-compiler/esp-tests/benchmarks/common/test.ld
+make spike N=4096 | grep -a "VERIF"
+ALL VERIFIED
+make rtl N=4096 LANES=1 > /dev/null
