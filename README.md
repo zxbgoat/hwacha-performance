@@ -3,33 +3,27 @@
 UC Berkeley Hwacha 解耦向量取指加速器的文档集与性能模型。
 
 - `docs/`：设计思想、编程模型、ISA、整体架构、微架构与各子模块文档（从 `docs/README.md` 进入）
-- `hwacha_perf/`：Python 版 strip 粒度性能模拟器 + 解析式上下界模型（说明见 `docs/22-performance-model.md`）
-- `cc/`：C++ 版 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；说明见 `docs/23-cpp-model.md`）
+- `cc/`：C++ 的 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；抽象层次与内核文件格式见 `docs/22-performance-model.md`，实现见 `docs/23-cpp-model.md`）。早期的 Python 模型已在 v0.0.7 删除
 - `kernels/`：用 Hwacha 汇编写的示例内核（vvadd、saxpy、daxpy、csaxpy、dgemm 分块、模板滤波、gather、FMA 峰值）
 - `configs/`：论文评估配置、开源主线配置、混合精度配置、理想内存配置、RTL 校准配置
 - `rtl/`：在 Chipyard 1.11 `HwachaRocketConfig`（1 lane）、`HwachaL2RocketConfig`（2 lane）、`HwachaL4/L8/L16RocketConfig`（4/8/16 lane）的 Verilator RTL 上运行同一批内核的基准、微基准、探针与 Rodinia 程序；`rtl/results/` 保存了全部 RTL 计时与踪迹日志，`rtl/patches/` 是复现所需的上游补丁；`make calibrate` 一键回归（说明见 `docs/24-rtl-calibration.md`）
 - `kernels/hcc/`：hwacha-cc 编译得到的 OpenCL 内核向量块（含分歧循环），用于执行驱动模式的校验
-- `tests/`：pytest 回归测试
-- `scripts/summary.py`：批量运行并输出汇总表
+- `scripts/`：与 RTL 比较、踪迹处理、设计空间研究、批量汇总等脚本
 
 ## 快速开始
 
 ```bash
-pip install -e .                                   # 或直接 python3 -m hwacha_perf.cli
-hwacha-perf run kernels/daxpy.S --bounds           # 模拟 + 解析下界
-hwacha-perf run kernels/dgemm_opt.S --lanes 4 --n 131072
-hwacha-perf sweep kernels/daxpy.S --lanes 1,2,4 --vru on,off
-hwacha-perf run kernels/saxpy.S --config configs/paper-28nm-mxp.json
-hwacha-perf run kernels/vvadd.S --set n_seq_entries=16 --set mem.dram_latency=80 --json
+cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest && cd ../..
+S=cc/build/hwacha-sim
+$S run kernels/daxpy.S --n 65536                          # 论文配置（默认）
+$S run kernels/dgemm_opt.S --lanes 4 --n 131072 --json
+$S run kernels/saxpy.S --config configs/paper-28nm-mxp.json
+$S run kernels/vvadd.S --set n_seq_entries=16 --set mem.dram_latency=80 --stats
 # 执行驱动：用带补丁的 Spike 踪迹提供分支结果、活跃掩码与索引地址
 python3 scripts/hwacha_trace.py run rtl/bench-n4096.riscv -o trace.log
-hwacha-perf run kernels/csaxpy.S --config configs/rtl-hwacha-rocket.json --trace trace.log --trace-range $(python3 scripts/hwacha_trace.py range rtl/bench-n4096.riscv csaxpy_vf)
-python3 scripts/summary.py --n 16384
-python3 -m pytest -q
-
-# C++ 模型
-cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest
-./hwacha-sim run ../../kernels/daxpy.S --n 65536 --json
+$S run kernels/csaxpy.S --config configs/rtl-hwacha-rocket.json --trace trace.log --trace-range $(python3 scripts/hwacha_trace.py range rtl/bench-n4096.riscv csaxpy_vf)
+python3 scripts/summary.py --n 16384 --lanes 1,2,4        # 批量汇总表
+python3 scripts/design_space.py                           # docs/25 的设计空间研究
 ```
 
 ## 内核文件格式
@@ -58,22 +52,20 @@ saxpy_vf:
 
 ### 第一层：只跑模型（几分钟）
 
-需要 Python ≥ 3.10、CMake ≥ 3.16、Ninja、支持 C++17 的编译器。
+需要 CMake ≥ 3.16、Ninja、支持 C++17 的编译器，以及 Python 3（只用于脚本，没有第三方依赖）。
 
 ```bash
 git clone <本仓库> hwacha-performance && cd hwacha-performance
-pip install -e .                                   # Python 模型（可选，也可直接 python3 -m hwacha_perf.cli）
-python3 -m pytest -q                               # Python 模型回归
 cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest --output-on-failure && cd ../..
 ```
 
 `ctest` 里的 8 个测试就是文档里的校准表：`memtest`/`kernels`（模型自检）、`calibrate`（1 lane：`rtl/results/rtl-n4096-aligned.log` + `micro-n4096-aligned2.log`）、`calibrate-l2`、`calibrate-l4`、`calibrate-l8`、`calibrate-l16`、`calibrate-rodinia`（踪迹驱动的 Rodinia 内核）。单独看表用比较脚本：
 
 ```bash
-python3 scripts/compare_rtl.py --no-py --logs rtl/results/rtl-n4096-aligned.log,rtl/results/micro-n4096-aligned2.log
-python3 scripts/compare_rtl.py --no-py --config configs/rtl-hwacha-rocket-l2.json --logs rtl/results/rtl-n4096-l2-fixed.log,rtl/results/micro-n4096-l2-aligned.log
-python3 scripts/compare_rtl.py --no-py --config configs/rtl-hwacha-rocket-l4.json --logs rtl/results/rtl-n4096-l4.log,rtl/results/micro-n4096-l4.log
-python3 scripts/compare_rodinia.py --no-py            # 需要 rtl/rodinia/*.riscv 的符号表：见第二层；没有工具链时用 --syms 参数（下文）
+python3 scripts/compare_rtl.py --logs rtl/results/rtl-n4096-aligned.log,rtl/results/micro-n4096-aligned2.log
+python3 scripts/compare_rtl.py --config configs/rtl-hwacha-rocket-l2.json --logs rtl/results/rtl-n4096-l2-fixed.log,rtl/results/micro-n4096-l2-aligned.log
+python3 scripts/compare_rtl.py --config configs/rtl-hwacha-rocket-l4.json --logs rtl/results/rtl-n4096-l4.log,rtl/results/micro-n4096-l4.log
+python3 scripts/compare_rodinia.py            # 需要 rtl/rodinia/*.riscv 的符号表：见第二层；没有工具链时用 --syms 参数（下文）
 python3 scripts/tl_trace_stats.py rtl/results/tlv-micro-n4096-l4.log   # TileLink 通道级跟踪的统计（docs/24 第 10.1/10.9 节）
 python3 scripts/design_space.py > /tmp/design_space.md                  # docs/25-design-space.md 的全部表格（约 5 分钟）
 ```
@@ -81,7 +73,7 @@ python3 scripts/design_space.py > /tmp/design_space.md                  # docs/2
 预期结果（C++ 模型，`docs/24-rtl-calibration.md` 10.10 节）：完整基准平均误差 1 lane 2.5%、2 lane 2.4%、4 lane 1.8%、8 lane 2.5%、16 lane 1.3%；Rodinia 平均 4.2%（最大 9.2%）。`compare_rodinia.py` 默认用 `riscv64-unknown-elf-nm` 读 `rtl/rodinia/<prog>.riscv` 的符号地址来切分踪迹；没有工具链时用 `--syms` 直接给出（五个内核在当前二进制里的地址范围都相同）：
 
 ```bash
-python3 scripts/compare_rodinia.py --no-py --syms nn=80002010:800020a0,kmeans_swap=800021a0:800022a0,kmeans_c=80002010:800021a0,pgain=80002030:800022e0,pathfinder=80002010:800024c0
+python3 scripts/compare_rodinia.py --syms nn=80002010:800020a0,kmeans_swap=800021a0:800022a0,kmeans_c=80002010:800021a0,pgain=80002030:800022e0,pathfinder=80002010:800024c0
 ```
 
 ### 第二层：Spike 踪迹与 RISC-V 二进制（约 1 小时，主要是安装）
@@ -115,7 +107,7 @@ cd $PERF/rtl
 make bench-n4096.riscv micro-n4096.riscv && make spike | grep -a VERIF     # 应打印 ALL VERIFIED
 make -C rodinia all && for p in nn kmeans pgain pathfinder; do make -s -C rodinia $p.spike | grep -a PASS; done
 cd .. && for p in nn kmeans pgain pathfinder; do python3 scripts/hwacha_trace.py run rtl/rodinia/$p.riscv -o rtl/results/trace-rodinia-$p.log; done
-python3 scripts/compare_rodinia.py --no-py                                   # 现在可以直接用符号表
+python3 scripts/compare_rodinia.py                                   # 现在可以直接用符号表
 ```
 
 `kernels/rodinia/*.S` 由 `scripts/extract_hcc_kernel.py` 从 hwacha-cc 的 `.s` 抠出（寄存器配置取自 spike-hlog 的 `H: VSETCFG` 行），文件头有生成命令。

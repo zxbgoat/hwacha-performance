@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""对 kernels/ 下所有内核在若干配置下运行模型，输出汇总表（Markdown）。
+"""对 kernels/ 下所有内核在若干配置下运行 C++ 模型，输出汇总表（Markdown）。
 
-用法: python3 scripts/summary.py [--n N] [--kernels a.S,b.S] [--configs paper-28nm,open-source]
+用法: python3 scripts/summary.py [--n N] [--kernels a.S,b.S] [--configs paper-28nm,open-source] [--lanes 1,2,4]
 """
-import argparse
-import glob
-import os
-import sys
+import argparse, glob, json, os, subprocess, sys
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+EXE = os.path.join(ROOT, 'cc', 'build', 'hwacha-sim')
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from hwacha_perf import load_kernel, Simulator, analyze
-from hwacha_perf.config import load_configs
-
+def run(kernel, cfg, n, lanes):
+    r = subprocess.run([EXE, 'run', kernel, '--config', cfg, '--n', str(n), '--lanes', str(lanes), '--quiet', '--json'], capture_output=True, text=True)
+    try:
+        return json.loads(r.stdout)
+    except Exception:
+        sys.stderr.write(f'{kernel}: {r.stderr[-300:]}\n'); return None
 
 def main():
     ap = argparse.ArgumentParser()
@@ -19,24 +20,17 @@ def main():
     ap.add_argument('--kernels', default=None)
     ap.add_argument('--configs', default='paper-28nm,open-source')
     ap.add_argument('--lanes', default='1')
-    args = ap.parse_args()
-    root = os.path.join(os.path.dirname(__file__), '..')
-    if args.kernels:
-        paths = [os.path.join(root, 'kernels', k) for k in args.kernels.split(',')]
-    else:
-        paths = sorted(glob.glob(os.path.join(root, 'kernels', '*.S')))
-    print('| kernel | config | lanes | cycles | cyc/elem | GFLOPS | FMA util | B/cycle | bound cyc | binding |')
-    print('|---|---|---|---|---|---|---|---|---|---|')
+    a = ap.parse_args()
+    paths = [os.path.join(ROOT, 'kernels', k) for k in a.kernels.split(',')] if a.kernels else sorted(glob.glob(os.path.join(ROOT, 'kernels', '*.S')))
+    print('| kernel | config | lanes | cycles | cyc/elem | GFLOPS | FMA util | B/cycle |')
+    print('|---|---|---|---|---|---|---|---|')
     for p in paths:
-        k = load_kernel(p)
-        for cname in args.configs.split(','):
-            for L in [int(x) for x in args.lanes.split(',')]:
-                cfg, mcfg = load_configs(os.path.join(root, 'configs', cname + '.json'), {'n_lanes': L})
-                st = Simulator(k, cfg, mcfg, n=args.n).run()
-                b = analyze(k, cfg, mcfg, n=args.n)
-                print(f'| {k.name} | {cname} | {L} | {st.cycles} | {st.cycles_per_elem:.3f} | {st.gflops:.2f} | '
-                      f'{100 * st.fma_util:.1f}% | {st.mem_bw_bytes_per_cycle:.2f} | {b.lower_bound_cycles} | {b.binding} |')
-
+        for cname in a.configs.split(','):
+            for L in [int(x) for x in a.lanes.split(',')]:
+                d = run(p, os.path.join(ROOT, 'configs', cname + '.json'), a.n, L)
+                if not d: continue
+                print(f"| {os.path.basename(p)[:-2]} | {cname} | {L} | {d['cycles']} | {d['cycles_per_elem']:.3f} | {d['gflops']:.2f} | "
+                      f"{100 * d['fma_util']:.1f}% | {d['mem_bw_bytes_per_cycle']:.2f} |")
 
 if __name__ == '__main__':
     main()

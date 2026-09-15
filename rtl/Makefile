@@ -53,7 +53,7 @@ calibrate: bench-n$(N).riscv micro-n$(N).riscv
 	$(MAKE) spike N=$(N) | grep -a "VERIF"
 	$(MAKE) rtl N=$(N) LANES=$(LANES) > /dev/null
 	$(MAKE) micro-rtl N=$(N) LANES=$(LANES) > /dev/null
-	python3 ../scripts/compare_rtl.py --logs results/rtl-n$(N)$(LOGSUF)$(LOGTAG).log,results/micro-n$(N)$(LOGSUF)$(LOGTAG).log --config $(CFG) --no-py --max-err $(MAXERR)
+	python3 ../scripts/compare_rtl.py --logs results/rtl-n$(N)$(LOGSUF)$(LOGTAG).log,results/micro-n$(N)$(LOGSUF)$(LOGTAG).log --config $(CFG) --max-err $(MAXERR)
 # TileLink 通道级跟踪（需要 +verbose，慢 30–50 倍；见 docs/24 10.1 节）
 tl-trace: micro-n$(N).riscv
 	mkdir -p results && $(SIM) +permissive +verbose +hwacha_tl_trace=1 +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -E "^(HTL|L2 |RESULT|N=)" > results/tlv-micro-n$(N)$(LOGSUF)$(LOGTAG).log

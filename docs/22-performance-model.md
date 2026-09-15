@@ -1,17 +1,10 @@
-# 22 Hwacha 性能模型
+# 22 性能模型的抽象层次、内核文件格式与输出指标
 
-代码位于仓库根目录的 `hwacha_perf/`。本文说明模型的抽象层次、建模的微架构机制、输入格式、输出指标、已验证的性质与已知局限。
+本文说明性能模型的抽象层次、建模的微架构机制、输入（内核文件与踪迹）格式、输出指标与已知局限；实现细节见 `23-cpp-model.md`（C++，`cc/`）。这些抽象最初在一个 Python 实现里建立，C++ 模型沿用了同一套内核描述、配置键与统计口径；Python 实现自 v0.0.7 起删除（第三轮 RTL 校准之后它已与 C++ 分叉，不再维护）。
 
 ## 1. 模型定位
 
-模型有两层：
-
-| 层 | 模块 | 用途 | 精度 |
-|---|---|---|---|
-| 解析式上下界 | `analytic.py` | 秒级估计；给出每种资源（读口、FMA、访存端口、L2、DRAM、标量发射、控制线程）的周期下界与最紧的瓶颈 | 下界，忽略依赖与延迟 |
-| strip 粒度周期模拟 | `sim.py` | 模拟指令生命周期、序列器窗口、chaining、功能单元/端口冲突、访存延迟与带宽、VRU 预取 | 周期近似（一阶效应） |
-
-两者共用同一份内核描述与配置，模拟结果应当不低于解析下界，通常在下界的 1–1.3 倍以内。
+模型是 strip（8 个 64 位元素）粒度的周期级模拟：模拟每条向量指令的生命周期、序列器窗口、chaining、功能单元/端口冲突、访存延迟与带宽、VRU 预取；C++ 实现把存储系统做成 gem5 风格的逐拍事件模型（见 23 节）。经 RTL 校准（24 节）后，完整基准的误差在 1–16 lane 下都在 3% 以内。`--bounds`/解析式上下界只在早期 Python 实现里有，C++ 模型没有保留。
 
 ## 2. 建模的微架构机制
 
@@ -38,7 +31,7 @@
 
 ## 3. 参数
 
-`HwachaConfig` 与 `MemoryConfig`（`hwacha_perf/config.py`）的字段名与 `docs/18-source-map.md` 中的 Chisel 参数一一对应，可用 `--set key=val`、`--set mem.key=val` 或 JSON 配置覆盖。`configs/` 下提供：
+参数（C++ 里的 `HwachaParams`，见 `cc/src/hwacha.hh`；存储系统参数在 `cc/src/main.cc` 读取）的键名与 `docs/18-source-map.md` 中的 Chisel 参数一一对应，可用 `--set key=val`、`--set mem.key=val` 或 JSON 配置覆盖。`configs/` 下提供：
 
 | 文件 | 含义 |
 |---|---|
@@ -64,28 +57,13 @@
 | 指令行 `# @taken N` | 一致性分支每次 vf 被采纳的次数 |
 | 指令行 `# @gather array [random\|unit]` | 索引访存的目标数组与访问模式 |
 
-`run --trace <spike-trace>` 切换到执行驱动模式：分支结果、活跃掩码与索引地址来自带补丁的 Spike 踪迹（见 `docs/24-rtl-calibration.md` 8.1 节）。
+`run --trace <spike-trace> [--trace-range lo:hi] [--trace-blocks a:b] [--trace-base pc]` 切换到执行驱动模式：分支结果、活跃掩码与索引地址来自带补丁的 Spike 踪迹（见 `docs/24-rtl-calibration.md` 8.1 节）。
 
 ## 5. 输出指标
 
 `run` 输出：总周期、每元素周期、GFLOPS（按 FMA 元素数 ×2）、FMA 利用率、读口利用率、访存带宽（B/周期）、序列器平均占用；lane 状态分解（`issue`、`raw`、`raw_mem`、`war`、`waw`、`rport`、`fu`、`latch`、`wport`、`vsdq`、`drain`、`empty`）、标量单元状态（`issue`、`seq_full`、`scoreboard`、`branch`、`fence`、`idle`）、VMU 状态（`busy`、`vmt_full`、`tlb`、`wait_data`、`wait_addr`、`idle`）、控制线程状态（`issue`、`bookkeeping`、`vcmdq_full`、`done`）、L2/DRAM 统计与 VRU 统计。`--json` 输出机器可读格式，`--bounds` 附带解析下界。
 
-## 6. 已验证的性质（tests/）
-
-| 性质 | 结果 |
-|---|---|
-| 寄存器内 FMA 链（2 向量源 + 1 标量）达到双 FMA 簇峰值 | 单 lane 8.0 GFLOPS @1 GHz，FMA 利用率 100%，读口利用率 100% |
-| 流式内核（vvadd/daxpy）受 DRAM 带宽限制 | 模拟周期在解析下界的 1.03 倍以内；解析模型判定 `dram_bandwidth` 为瓶颈 |
-| VRU 预取对流式内核有效 | daxpy 32 K 元素：开启 70.8 k 周期，关闭 89.6 k 周期，预取命中覆盖全部行 |
-| 多 lane 对计算受限内核有效 | dgemm 分块 131 K 元素：1/2/4 lane FMA 利用率 99.5% / 92.8% / 77.7%；理想内存下 4 lane 达 98.6% |
-| 混合精度使 32 位内核 HVL 翻倍、strip 数减半 | saxpy 在 `conf_prec` 下 maxvl 2048 vs 1024 |
-| 序列器槽位限制发射窗口 | vvadd 在 8 槽时标量单元 `seq_full` 占比高于 16 槽 |
-| 索引访存每元素一个 beat | gather 内核 beat 数与元素数一致（相邻元素同 beat 合并除外） |
-| 一致性分支循环按注解次数执行 | `@taken 3` 时块内操作数为 1 + 4×3 + 1 |
-
-`HVL` 计算与 `rocc-unit.scala` 的 epb 逻辑一致（例如 6 个 64 位寄存器 → 42 行 → HVL 336；16 个谓词寄存器把 HVL 限制到 128）。
-
-## 7. 典型结论（默认论文配置，n = 16 K）
+## 6. 典型结论（默认论文配置，n = 16 K；早期 Python 实现的数字，量级与 C++ 一致，见 23 节 4 的对比）
 
 `python3 scripts/summary.py --n 16384` 的输出（论文配置 vs 开源配置，单 lane）：
 
@@ -110,7 +88,7 @@
 - 随机 gather 在 8 项 DTLB 下一旦表大于 32 KB 就被 TLB 缺失主导（每元素约一次 40 周期的 PTW），这是模型给出的一个值得注意的微架构特性。
 - 开源配置（`open-source.json`）由于没有 VRU 且只有单 bank 小 L2，流式内核性能比论文配置差 20%–40%，与 Ara 论文对开源版 Hwacha 的批评方向一致。
 
-## 8. 已知局限
+## 7. 已知局限
 
 - 不模拟 Rocket 核本身的流水线，控制线程只按命令计数与固定簿记周期建模。
 - 每 lane 每周期最多发射一个序列器操作（未建模源码中的第二调度端口）；VPU 谓词读出对访存视为免费。

@@ -48,7 +48,7 @@ ctest --output-on-failure            # memtest（存储系统）+ kernels（全�
 
 存储系统参数键名与 Python 的 `MemoryConfig` 一致（`l2_banks`、`l2_bytes_per_bank`、`l2_ways`、`l2_hit_latency`、`l2_trackers_per_bank`、`dram_channels`、`tlb_entries`、`tlb_miss_latency`、`l2_supports_amo`），另加 DRAM 时序键：`dram_tck_ps`（默认 1072，LPDDR3-1866）、`dram_banks`、`dram_row_bytes`、`dram_burst_bytes`、`dram_tRCD`、`dram_tRP`、`dram_tRAS`、`dram_tRC`、`dram_tCL`、`dram_tCWL`、`dram_tBURST`、`dram_tCCD`、`dram_tRTP`、`dram_tWR`、`dram_tWTR`、`dram_tRTW`、`dram_tRRD`、`dram_tFAW`、`dram_tREFI`、`dram_tRFC`、`dram_frontend_latency`、`dram_backend_latency`、`dram_read_queue`、`dram_write_queue`（单位 tCK）。Python 模型的 `dram_latency` / `dram_bytes_per_cycle_per_channel` 在 C++ 中不再使用，带宽由 tCK 与 burst 推出（LPDDR3-1866 ×32 每通道约 7.46 B/ns）。
 
-## 4. 与 Python 模型的对比
+## 4. 与（已删除的）Python 模型的对比（历史记录，v0.0.1 时）
 
 两个模型在相同参数（Python 侧把每通道 DRAM 带宽设为 7.46 B/周期以匹配 LPDDR3-1866）、n = 16384、单 lane、VRU 开启下的结果：
 
