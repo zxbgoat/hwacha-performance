@@ -2,6 +2,40 @@
 
 本文记录把性能模型对齐到真实 RTL 的第一轮工作：环境、测量方法、从 RTL 上直接测得的微架构事实、模型为此做的修正，以及当前的误差与残余差异。
 
+## 0. 当前状态（只想知道结论看这一节）
+
+本文按时间顺序记录了四轮校准，早期各节的数字已被后面的节覆盖；这一节是截至 v0.0.8 的总结，后面各节是过程。
+
+**方法**：Chipyard 1.11 `HwachaRocketConfig` 及其 2/4/8/16 lane 变体的 Verilator RTL，`rtl/` 下同一批内核的基准（8 个手写内核）、微基准（16 个）、探针、hwacha-cc 编译的 OpenCL 内核（5 个 bench + 5 个 Rodinia，踪迹驱动）。每个内核计时三次，取第三次（数据驻留 L2、无 L1D 脏行探测）为稳态，模型对应稳态；`compare_rtl.py --cold` 用冷启动描述与第一次计时比较。TileLink 通道级跟踪（`+hwacha_tl_trace`）用于定位机制。
+
+**校准得到的微架构事实**（对应模型参数见 `23-cpp-model.md` 附录）：
+
+| 事实 | 出处 | 模型 |
+|---|---|---|
+| RoCC 命令约 2 拍；PLU/ALU 每 lane 每拍 1 strip；单 strip load 35 拍；load/store 每拍 1 beat；FMA 依赖链被 chaining 隐藏 | §3 | 默认参数 |
+| 块内标量 load 约 9.5 拍、标量乘 4 拍；一致性分支每 strip 6 拍（谓词归约） | §8.2 | `scalar_smu_latency` 12、`scalar_muldiv_latency` 5、`branch_strip_cycles` 6 |
+| SimDRAM 几乎无延迟/带宽限制，L2 缺失只多 10–15 拍 | §8.3 | RTL 配置的 DRAM 时序极快 |
+| 所有 lane 共用一条 128 位 TileLink 路径进单个 L2 bank，每拍 1 请求；load 吞吐与 lane 数无关 | §10.1 | `l2_banks` 1 |
+| L2 命中 A→D 4 拍；store（PutPartial）占 MSHR 约 5 拍、load 约 1 拍 | §10.1 | — |
+| `vfdiv` 每 lane 每元素 3 拍、`vfsqrt.s` 5 拍；跨步/索引访存每元素一个请求 | §10.7 | `fdiv/fsqrt_cycles_per_elem`、beat 生成 |
+| store 每 beat 代价随并发交错的行数增长：1/2/4/8/16 lane 为 1.03/1.09/1.20/1.75/1.97 拍（读-改-写冲突） | §10.9–10.10 | `l2_store_conflict` 查表 |
+| 序列器：刚发过 strip 的条目让位给其他就绪条目（age 规则），store/索引访存只从最老条目发射，谓词逻辑有独立发射口 | §10.12 | `seq_age_rule`、`plu_port` |
+| 冷启动：L1D 里的脏行第一次被向量访问时探测约 4 拍/行 | §10.12 | `mem.cold_start` |
+| 2 lane 以上索引访存的 RTL 断言是 IBoxML 的真 bug | §10.3 | 已修复（`rtl/patches`） |
+
+**当前误差**（C++ 模型，RTL 稳态，`scripts/check_calibration.py`）：
+
+| 套件 | 1 lane | 2 lane | 4 lane | 8 lane | 16 lane |
+|---|---|---|---|---|---|
+| 完整基准（8 个内核）平均 / 最大 | 2.4% / 6.9% | 2.2% / 4.3% | 1.4% / 4.4% | 2.0% / 4.3% | 1.0% / 3.7% |
+| 微基准（不含 micro_empty）平均 / 最大 | 2.1% / 6.2% | 1.9% / 3.6% | 1.1% / 4.9% | 1.8% / 11.0% | 2.2% / 11.2% |
+| hwacha-cc bench 内核（5 个，踪迹驱动）平均 / 最大 | 6.8% / 18.3%（clamp） | — | 7.0% / 16.5%（divloop） | — | — |
+| Rodinia 内核（5 个，踪迹驱动）平均 / 最大 | 6.3% / 9.6%（pathfinder） | — | 见 §10.12 | — | — |
+
+**已知偏差**：谓词密集的块（clamp −18%、pathfinder −10%、pgain −9%、nn −9%）模型偏乐观，谓词逻辑/谓词化访存的调度细节尚未还原；跨步 4 B store 在 8/16 lane 下 +11%；micro_empty（几十到几百拍的空块）多 lane 下偏快，真实内核里不到 1%；1 lane 下 store 有 1.03–1.16 拍/beat 的布局波动无法复现。
+
+**目录**：§1–§2 参照物与测量程序；§3、§8.2、§8.3、§10.1、§10.7、§10.8、§10.10 是测得的机制；§4、§10.9、§10.12 是模型修正；§5、§7、§8.5、§10.6、§10.11 是各轮的误差表（历史）；§11 下一步。
+
 ## 1. 参照物
 
 | 项 | 取值 |
@@ -421,10 +455,22 @@ micro_empty 在 8/16 lane 下模型偏快 40%–59%（RTL 122 / 100 拍 vs 模�
 - Rodinia 内核（5 个，踪迹驱动）：平均 4.2%，最大 9.2%（nn）。
 - hwacha-cc bench 内核（5 个，踪迹驱动，8.1 节）：−3%～−7%，divloop −12%（未重跑）。
 
-## 9. 下一步
+### 10.12 第四轮：序列器 age 规则、冷启动、不均匀 store 模式、多 lane 踪迹驱动验证、工程整理
 
-1. store 通路按并发行数查表（10.10）是经验拟合：能同时覆盖 1–16 lane，但没有还原 InclusiveCache 读-改-写冲突的具体机制；1 lane 下 1.03–1.16 拍/beat 的布局波动（10.8）也无法复现。
-2. nn −9%、pathfinder −6%：都是分支多、谓词化访存多的块，模型的一致性分支（每 strip 6 拍）与谓词归约可能仍偏乐观；divloop −12% 同类。
-3. Python 模型从第三轮末起不再迭代（10.9 的 L2 store 通路、VSDQ 按数据量计数等只在 C++ 里），只作为 C++ 模型的交叉参照。
-4. 冷启动效应（L1D 脏行/共享行探测，冷态比稳态慢 1%–40%）未建模：模型对应稳态。
-5. VRU 与混合精度在开源 RTL 上仍没有可用配置，只能对论文数据做趋势校验；`25-design-space.md` 的多 lane/多 bank 结论是模型外推。
+**序列器调度**。divloop 在 1 lane 下重新比较得到 +33%（第二轮的 −12% 用的是另一份踪迹）。分解发现：模型里的一致性分支（每 strip 6 拍的谓词归约）与同一迭代里其它向量指令的 strip 串行；RTL 的 `sequencer-lane.scala` 用 `age` 字段——一个条目发出 strip 后 age := nBanks−1 逐拍递减，调度先在 age 为 0 的就绪条目里按年龄取第一个，没有才取任意就绪条目——于是多个就绪条目轮流占用发射槽，分支的归约与其它指令重叠。模型照此实现（`seq_age_rule`），并按 RTL 把 VSU（store 数据）与 VGU（索引地址）限制为只从各自最老的条目发射（否则年轻的 store 先占满 VSDQ 会把 VMU 队头卡死），谓词逻辑（vpop 等）走独立的 VIPU 发射口（`plu_port`）。效果：divloop +33% → +3.1%，sfilter +6.9% → +2.0%，1–16 lane 完整基准平均误差都在 2.4% 以内；代价是谓词密集的块变得偏乐观（clamp −6.7% → −18.3%，pgain +0.8% → −8.9%，pathfinder −5.9% → −9.6%）。给谓词单元加每 strip 占用（`plu_occupancy`）会让 divloop 重新变差，未采用。
+
+**不均匀的 store 模式**（`micro_st2`：每 lane 两条 store 流交替；`micro_ld4st1`：四条 load 流夹一条 store 流）：8 lane RTL 稳态 7120 / 12106 拍，模型 +1.4% / −2.6%，说明并发行数查表对"每 lane 多于一条流"和"以 load 为主"的流量也成立。同时把 L2 改为 A 通道按序接受（store 通路忙时 load 也进不来，`l2_store_blocks_loads`）。
+
+**冷启动**（`mem.cold_start`）：把内核数组列表末尾 16 KB 当作标量核刚写、仍在 L1D 里的脏行，第一次向量访问它们时 L2 探测 L1D，每行多 4 拍并占住 bank。与 RTL 第一次计时比较：1 lane 平均 4.5%（sfilter +13.7% 最差，vvadd/daxpy/saxpy/csaxpy 在 −6% 内），4 lane 与 8 lane 各内核在 ±7% 内。这是一个描述性开关，不影响稳态比较。
+
+**多 lane 的踪迹驱动验证**：hwacha-cc bench 内核在 4 lane RTL（`rtl/results/hcc-n1024-l4.log`）上：saxpy 1305 / 模型 −5.4%，clamp 928 / −4.0%，divloop 4812 / +16.5%，stencil 1569 / −4.8%，gather 1960 / −4.3%。踪迹模式在多 lane 下按 lane 分配元素与活跃掩码的路径可用；divloop 的 +16.5% 来自每次迭代约 20 拍的块内标量指令延迟在 strip 变短后不再被隐藏。Rodinia 的 4 lane 结果见 `rodinia-*-l4.log`（__RODINIA_L4__）。
+
+**工程整理**：`mem.cc` 删掉三个没拟合上的机械 store 模型，store 代价集中在 `L2Bank::storeBeatCost`；`rtl/results` 的踪迹与 TileLink 日志改为 gzip（101 MB → 10 MB），脚本与 C++ 都透明读取；`scripts/check_calibration.py` 按每个内核记录模型周期数基线（`hwacha-perf/tests/calibration_baseline.json`），ctest 里的 `calibrate` 检查 RTL 误差 ≤ 20% 且相对基线漂移 ≤ 2%；`make calibrate LANES=1` 端到端重跑过一次；16 lane 仿真器用 `VERILATOR_THREADS=4` 重建（__L16_THREADS__）；新增 `HwachaNoVRURocketConfig`、`HwachaL2B2RocketConfig`（__VRU_L2B2__）。
+
+## 11. 下一步
+
+1. 谓词密集的块（clamp −18%、pgain/pathfinder/nn −9%～−10%）：谓词逻辑单元与谓词化访存在 VIPU/VSU 路径上的调度细节，需要 vpop 密集的微基准或谓词单元的跟踪。
+2. store 通路仍是按并发行数查表的经验模型（10.10）；机械解释需要逐 beat 对比 8/16 lane 跟踪里 L2 的接受时刻或读 `BankedStore`。
+3. 跨步 4 B store 在 8/16 lane 下 +11%；1 lane 下 store 的布局波动（10.8）无法复现。
+4. VRU 与多 bank L2 的 RTL 校准（`HwachaNoVRURocketConfig`、`HwachaL2B2RocketConfig`）：仿真器构建完成后跑 probe4（冲掉 L2 后的向量 load）与 2 lane 基准，校验 `25-design-space.md` 里 VRU 与每 lane 一个 bank 的结论。
+5. Chisel 改动只在 `rtl/patches` 里；IBoxML 修复值得给 hwacha 上游提 issue/PR。

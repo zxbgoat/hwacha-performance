@@ -14,3 +14,5 @@ RESULT csaxpy_warm2 3859 cycles 4096 elems
 RESULT sfilter 5798 cycles 4096 elems
 RESULT sfilter_warm 5621 cycles 4096 elems
 RESULT sfilter_warm2 5264 cycles 4096 elems
+RESULT gather 10087 cycles 4096 elems
+RESULT gather_warm 9062 cycles 4096 elems

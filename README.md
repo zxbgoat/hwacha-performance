@@ -59,13 +59,14 @@ git clone <本仓库> hwacha-performance && cd hwacha-performance
 cd hwacha-perf && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest --output-on-failure && cd ../..
 ```
 
-`ctest` 里的 8 个测试就是文档里的校准表：`memtest`/`kernels`（模型自检）、`calibrate`（1 lane：`rtl/results/rtl-n4096-aligned.log` + `micro-n4096-aligned2.log`）、`calibrate-l2`、`calibrate-l4`、`calibrate-l8`、`calibrate-l16`、`calibrate-rodinia`（踪迹驱动的 Rodinia 内核）。单独看表用比较脚本：
+`ctest` 里的 3 个测试：`memtest`/`kernels`（模型自检）、`calibrate`（`scripts/check_calibration.py`：1/2/4/8/16 lane 的基准与微基准、hwacha-cc 与 Rodinia 内核共 122 个条目，每个条目的 RTL 误差不超过 20%，且相对 `hwacha-perf/tests/calibration_baseline.json` 里记录的模型周期数漂移不超过 2%；改模型后确认漂移合理再 `--update` 基线）。单独看表用比较脚本：
 
 ```bash
 python3 scripts/compare_rtl.py --logs rtl/results/rtl-n4096-aligned.log,rtl/results/micro-n4096-aligned2.log
 python3 scripts/compare_rtl.py --config configs/rtl-hwacha-rocket-l2.json --logs rtl/results/rtl-n4096-l2-fixed.log,rtl/results/micro-n4096-l2-aligned.log
 python3 scripts/compare_rtl.py --config configs/rtl-hwacha-rocket-l4.json --logs rtl/results/rtl-n4096-l4.log,rtl/results/micro-n4096-l4.log
-python3 scripts/compare_rodinia.py            # 需要 rtl/rodinia/*.riscv 的符号表：见第二层；没有工具链时用 --syms 参数（下文）
+python3 scripts/compare_rodinia.py            # Rodinia 内核；--suite hcc 是 hwacha-cc bench 内核；--lanes 4 用 4 lane 的日志与配置
+python3 scripts/compare_rtl.py --cold --logs rtl/results/rtl-n4096-aligned.log   # 与第一次（冷）计时比较，模型打开冷启动描述
 python3 scripts/tl_trace_stats.py rtl/results/tlv-micro-n4096-l4.log   # TileLink 通道级跟踪的统计（docs/24 第 10.1/10.9 节；大日志以 .log.gz 存放，脚本与模型都能直接读，给 .log 路径会自动找 .gz）
 python3 scripts/design_space.py > /tmp/design_space.md                  # docs/25-design-space.md 的全部表格（约 5 分钟）
 ```
@@ -134,7 +135,8 @@ cd $PERF/rtl
 make calibrate LANES=1          # Spike 验证 → 基准 + 微基准 RTL 计时 → compare_rtl.py（超过 MAXERR=12% 返回非零）
 make calibrate LANES=2
 make calibrate LANES=4          # 同样支持 LANES=8 / 16（16 lane 仿真器每周期约 5 倍慢于 1 lane）
-make -C rodinia rtl             # 四个 Rodinia 程序（三次计时；~1 小时）
+make -C rodinia rtl             # 四个 Rodinia 程序（三次计时；~1 小时；同样支持 LANES=）
+make -C hcc rtl LANES=4         # hwacha-cc bench 内核
 make probe6-rtl                 # store 布局探针（docs/24 10.8 节）
 make tl-trace LANES=4           # TileLink 通道级跟踪：+verbose 下慢 30–50 倍，微基准约 30 分钟
 ```
