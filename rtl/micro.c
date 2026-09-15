@@ -6,7 +6,7 @@
 #define N 4096
 #endif
 #define VCFG(v64, v32, v16, vp) (((v64) & 0x1ff) | (((vp) & 0x1f) << 9) | (((v32) & 0x1ff) << 14) | (((v16) & 0x1ff) << 23))
-extern char micro_load_vf[], micro_store_vf[], micro_copy_vf[], micro_load2_vf[], micro_alu_vf[], micro_fma_dep_vf[], micro_empty_vf[], micro_ldst_vf[], micro_stld_vf[], micro_inplace_vf[], micro_fsqrt_s_vf[], micro_fdiv_s_vf[], micro_fdiv_d_vf[], micro_lstride_vf[], micro_sstride_vf[], micro_st2_vf[], micro_ld4st1_vf[];
+extern char micro_load_vf[], micro_store_vf[], micro_copy_vf[], micro_load2_vf[], micro_alu_vf[], micro_fma_dep_vf[], micro_empty_vf[], micro_ldst_vf[], micro_stld_vf[], micro_inplace_vf[], micro_fsqrt_s_vf[], micro_fdiv_s_vf[], micro_fdiv_d_vf[], micro_lstride_vf[], micro_sstride_vf[], micro_st2_vf[], micro_ld4st1_vf[], micro_pcmp_vf[], micro_pcmp_use_vf[], micro_pcmp_2use_vf[], micro_vpop_vf[], micro_vpop_indep_vf[], micro_pmix_vf[], micro_fma2_indep_vf[], micro_fma2_waw_vf[], micro_pcmp_2diff_vf[], micro_pfma2_same_vf[];
 static inline unsigned long cycles_now(void) { unsigned long c; asm volatile("rdcycle %0" : "=r"(c)); return c; }
 #define VSETCFG(c)      asm volatile("vsetcfg %0" :: "r"((unsigned long)(c)))
 #define VSETVL(vl, n)   asm volatile("vsetvl %0, %1" : "=r"(vl) : "r"(n))
@@ -60,6 +60,16 @@ int main(void) {
   TIME("micro_sstride", run_stride(micro_sstride_vf, N, VCFG(0, 1, 0, 1), yd, 8));
   TIME("micro_st2",     run1(micro_st2_vf,     N, VCFG(2, 0, 0, 1), xd, yd));
   TIME("micro_ld4st1",  run4(micro_ld4st1_vf,  N, VCFG(4, 0, 0, 1), xd, yd, zd, wd));
+  TIME("micro_pcmp",       run1v(micro_pcmp_vf,       N, VCFG(0, 1, 0, 2), 0x4000000040000000ull));
+  TIME("micro_pcmp_use",   run1v(micro_pcmp_use_vf,   N, VCFG(0, 2, 0, 2), 0x4000000040000000ull));
+  TIME("micro_pcmp_2use",  run1v(micro_pcmp_2use_vf,  N, VCFG(0, 2, 0, 2), 0x4000000040000000ull));
+  TIME("micro_vpop",       run1v(micro_vpop_vf,       N, VCFG(1, 0, 0, 3), 0));
+  TIME("micro_vpop_indep", run1v(micro_vpop_indep_vf, N, VCFG(1, 0, 0, 5), 0));
+  TIME("micro_pmix",       run1v(micro_pmix_vf,       N, VCFG(0, 2, 0, 3), 0x4000000040000000ull));
+  TIME("micro_fma2_indep", run1v(micro_fma2_indep_vf, N, VCFG(0, 3, 0, 1), 0x4000000040000000ull));
+  TIME("micro_fma2_waw",   run1v(micro_fma2_waw_vf,   N, VCFG(0, 2, 0, 1), 0x4000000040000000ull));
+  TIME("micro_pcmp_2diff", run1v(micro_pcmp_2diff_vf, N, VCFG(0, 3, 0, 2), 0x4000000040000000ull));
+  TIME("micro_pfma2_same", run1v(micro_pfma2_same_vf, N, VCFG(0, 2, 0, 2), 0x4000000040000000ull));
   printf("DONE\n");
   return 0;
 }

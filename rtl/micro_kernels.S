@@ -1,5 +1,5 @@
 .text
-.globl micro_load_vf, micro_store_vf, micro_copy_vf, micro_load2_vf, micro_alu_vf, micro_fma_dep_vf, micro_empty_vf, micro_ldst_vf, micro_stld_vf, micro_inplace_vf, micro_sload_vf, micro_smul_vf, micro_salu_vf, micro_branch_vf, micro_fsqrt_s_vf, micro_fdiv_s_vf, micro_fdiv_d_vf, micro_lstride_vf, micro_sstride_vf, micro_st2_vf, micro_ld4st1_vf
+.globl micro_load_vf, micro_store_vf, micro_copy_vf, micro_load2_vf, micro_alu_vf, micro_fma_dep_vf, micro_empty_vf, micro_ldst_vf, micro_stld_vf, micro_inplace_vf, micro_sload_vf, micro_smul_vf, micro_salu_vf, micro_branch_vf, micro_fsqrt_s_vf, micro_fdiv_s_vf, micro_fdiv_d_vf, micro_lstride_vf, micro_sstride_vf, micro_st2_vf, micro_ld4st1_vf, micro_pcmp_vf, micro_pcmp_use_vf, micro_pcmp_2use_vf, micro_vpop_vf, micro_vpop_indep_vf, micro_pmix_vf, micro_fma2_indep_vf, micro_fma2_waw_vf, micro_pcmp_2diff_vf, micro_pfma2_same_vf, micro_load32_vf, micro_store32_vf
 .align 3
 #include "../kernels/micro_load.S"
 .align 3
@@ -42,3 +42,27 @@
 #include "../kernels/micro_st2.S"
 .align 3
 #include "../kernels/micro_ld4st1.S"
+.align 3
+#include "../kernels/micro_pcmp.S"
+.align 3
+#include "../kernels/micro_pcmp_use.S"
+.align 3
+#include "../kernels/micro_pcmp_2use.S"
+.align 3
+#include "../kernels/micro_vpop.S"
+.align 3
+#include "../kernels/micro_vpop_indep.S"
+.align 3
+#include "../kernels/micro_pmix.S"
+.align 3
+#include "../kernels/micro_fma2_indep.S"
+.align 3
+#include "../kernels/micro_fma2_waw.S"
+.align 3
+#include "../kernels/micro_pcmp_2diff.S"
+.align 3
+#include "../kernels/micro_pfma2_same.S"
+.align 3
+#include "../kernels/micro_load32.S"
+.align 3
+#include "../kernels/micro_store32.S"

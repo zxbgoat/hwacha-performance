@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
 
     hw::Kernel kernel = hw::loadKernel(kernelPath);
     hw::HwachaParams hp = hw::HwachaParams::from(hwP);
+    hp.l2Banks = (unsigned)memP.getInt("l2_banks", 4);
     uint64_t n = nOverride >= 0 ? (uint64_t)nOverride : kernel.n;
     Tick corePeriod = hp.period();
 

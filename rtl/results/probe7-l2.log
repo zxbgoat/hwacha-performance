@@ -1,0 +1,14 @@
+RESULT load64 2773 cycles 4096 elems
+RESULT load64_warm 2106 cycles 4096 elems
+RESULT load64_warm2 2126 cycles 4096 elems
+RESULT load32 1334 cycles 4096 elems
+RESULT load32_warm 1073 cycles 4096 elems
+RESULT load32_warm2 1096 cycles 4096 elems
+RESULT store64 2588 cycles 4096 elems
+RESULT store64_warm 2108 cycles 4096 elems
+RESULT store64_warm2 2138 cycles 4096 elems
+RESULT store32 1313 cycles 4096 elems
+RESULT store32_warm 1261 cycles 4096 elems
+RESULT store32_warm2 1263 cycles 4096 elems
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL2RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

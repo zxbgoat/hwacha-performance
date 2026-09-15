@@ -8,6 +8,7 @@
     "store_beat_cycles": 1.0,
     "freq_ghz": 1.0,
     "branch_strip_cycles": 6,
+    "pred_port_cycles": 2,
     "scalar_smu_latency": 12,
     "scalar_muldiv_latency": 5,
     "branch_resolve_latency": 0

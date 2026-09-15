@@ -79,3 +79,10 @@ probe6.riscv: probe6.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 probe6-rtl: probe6.riscv
 	mkdir -p results && stdbuf -oL $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -v "^\[UART\]" | tee results/probe6.log
+
+probe7.riscv: probe7.c micro_kernels.S $(COMMON)/crt.S $(COMMON)/syscalls.c
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+probe7-rtl: probe7.riscv
+	mkdir -p results && stdbuf -oL $(SIM) +permissive +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -v "^\[UART\]" | tee results/probe7$(LOGSUF)$(LOGTAG).log
+probe7-tl-trace: probe7.riscv
+	mkdir -p results && $(SIM) +permissive +verbose +hwacha_tl_trace=1 +max-cycles=4000000000 +loadmem=$< +permissive-off $< 2>&1 | grep -a --line-buffered -E "^(HTL|L2 |RESULT|N=|DONE)" > results/tlv-probe7$(LOGSUF)$(LOGTAG).log

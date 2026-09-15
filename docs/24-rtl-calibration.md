@@ -20,6 +20,8 @@
 | `vfdiv` 每 lane 每元素 3 拍、`vfsqrt.s` 5 拍；跨步/索引访存每元素一个请求 | §10.7 | `fdiv/fsqrt_cycles_per_elem`、beat 生成 |
 | store 每 beat 代价随并发交错的行数增长：1/2/4/8/16 lane 为 1.03/1.09/1.20/1.75/1.97 拍（读-改-写冲突） | §10.9–10.10 | `l2_store_conflict` 查表 |
 | 序列器：刚发过 strip 的条目让位给其他就绪条目（age 规则），store/索引访存只从最老条目发射，谓词逻辑有独立发射口 | §10.12 | `seq_age_rule`、`plu_port` |
+| vcmp 写谓词与浮点类谓词化读共用一个谓词端口，各 2 拍/strip；两条 FMA 同块内串行（4 拍/strip） | §10.14 | `pred_port_cycles` 2 |
+| 多 lane 在同一条访存指令上锁步（同 bank 碰撞时落后者赢，领先不超过 1 beat）；32 位元素两条 lane 共写一行每行多约 1 拍 | §10.14 | `lane_max_lead_beats` 1、`shared_line_store_turnaround` 1.5 |
 | 冷启动：L1D 里的脏行第一次被向量访问时探测约 4 拍/行 | §10.12 | `mem.cold_start` |
 | 2 lane 以上索引访存的 RTL 断言是 IBoxML 的真 bug | §10.3 | 已修复（`rtl/patches`） |
 
@@ -27,12 +29,13 @@
 
 | 套件 | 1 lane | 2 lane | 4 lane | 8 lane | 16 lane |
 |---|---|---|---|---|---|
-| 完整基准（8 个内核）平均 / 最大 | 2.4% / 6.9% | 2.2% / 4.3% | 1.4% / 4.4% | 2.0% / 4.3% | 1.0% / 3.7% |
-| 微基准（不含 micro_empty）平均 / 最大 | 2.1% / 6.2% | 1.9% / 3.6% | 1.1% / 4.9% | 1.8% / 11.0% | 2.2% / 11.2% |
-| hwacha-cc bench 内核（5 个，踪迹驱动）平均 / 最大 | 6.8% / 18.3%（clamp） | — | 7.0% / 16.5%（divloop） | — | — |
-| Rodinia 内核（5 个，踪迹驱动）平均 / 最大 | 6.3% / 9.6%（pathfinder） | — | 6.1% / 12.7%（kmeans_c） | — | — |
+| 完整基准（8 个内核）平均 / 最大 | 2.4% / 7.0% | 3.4% / 6.1% | 1.7% / 4.5% | 2.3% / 4.8% | 1.4% / 3.7% |
+| 2 lane + 2 bank L2：完整基准 / 微基准 | — | 7.3% / 28.1%（gather）、4.5% / 14.2% | — | — | — |
+| 微基准（不含 micro_empty）平均 / 最大 | 1.8% / 6.2%（26 个，含谓词分解） | 1.9% / 3.6% | 1.1% / 4.8% | 1.8% / 11.0% | 2.2% / 11.2% |
+| hwacha-cc bench 内核（5 个，踪迹驱动）平均 / 最大 | 8.9% / 18.3%（clamp） | — | 4.0% / 4.8% | — | — |
+| Rodinia 内核（5 个，踪迹驱动）平均 / 最大 | 4.7% / 9.7%（pathfinder） | — | 6.3% / 12.7%（kmeans_c） | — | — |
 
-**已知偏差**：谓词密集的块（clamp −18%、pathfinder −10%、pgain −9%、nn −9%）模型偏乐观，谓词逻辑/谓词化访存的调度细节尚未还原；跨步 4 B store 在 8/16 lane 下 +11%；micro_empty（几十到几百拍的空块）多 lane 下偏快，真实内核里不到 1%；1 lane 下 store 有 1.03–1.16 拍/beat 的布局波动无法复现。
+**已知偏差**：谓词密集的块里 clamp −18%（整数类谓词化读的代价介于 0 与 2 拍之间，未拟合）、divloop −13%、pathfinder −10%、pgain −8%（vpop + 谓词化整数/访存操作，来源未定位）；2 bank 下索引访存 −28%（锁步下随机 bank 冲突更集中，VGU 路径未建模）；跨步 4 B store 在 8/16 lane 下 +11%；micro_empty（几十到几百拍的空块）多 lane 下偏快，真实内核里不到 1%；1 lane 下 store 有 1.03–1.16 拍/beat 的布局波动无法复现。
 
 **目录**：§1–§2 参照物与测量程序；§3、§8.2、§8.3、§10.1、§10.7、§10.8、§10.10 是测得的机制；§4、§10.9、§10.12 是模型修正；§5、§7、§8.5、§10.6、§10.11 是各轮的误差表（历史）；§11 下一步。
 
@@ -496,10 +499,44 @@ micro_empty 在 8/16 lane 下模型偏快 40%–59%（RTL 122 / 100 拍 vs 模�
 
 **16 lane 多线程仿真器**：`VERILATOR_THREADS=4` 重建（`-j12` 编译约 45 分钟）后微基准 474 s 跑完，单线程版约 1600 s，快 3.4 倍；周期数与单线程版有 1%–5% 的差别（micro_load 2118 vs 2140，micro_alu 566 vs 540）——Verilator 多线程下 DPI 的时序有细微不同，校准日志仍以单线程版为准。
 
+### 10.14 谓词密集块的调度细节与多 bank 下的 lane 锁步
+
+**谓词微基准**（`rtl/results/micro-n4096-pred.log`、`micro-n4096-pred2.log`，1 lane，N = 4096 即 512 strip；模型误差为修正后的值）：
+
+| 微基准 | 内容 | RTL 稳态 | 每 strip 拍数 | 模型误差 |
+|---|---|---|---|---|
+| pcmp | `vcmpflt.s vp1` 单独 | 2094 | 4.1 | −1.7% |
+| pcmp_use | vcmp + `@vp1 vfadd.s` | 2096 | 4.1 | −0.3% |
+| pcmp_2use | vcmp + `@vp1 vfadd.s` + `@!vp1 vfsub.s` 写同一寄存器（clamp 的模式） | 3142 | 6.1 | −1.7% |
+| pcmp_2diff | 同上但写不同寄存器 | 3150 | 6.2 | −2.0% |
+| pfma2_same | 两条 `@vp0` 的 FMA 写同一寄存器，无 vcmp | 2068 | 4.0 | −0.2% |
+| fma2_indep / fma2_waw | 两条无谓词 FMA，写不同 / 相同寄存器 | 2094 / 2067 | 4.1 / 4.0 | −1.6% / −0.3% |
+| vpop / vpop_indep | 4 条相关 / 独立的 vpop | 2577 / 2578 | 5.0 | −0.3% / −1.3% |
+| pmix | vpop + `@vp1` FMA + vpop + `@vp2` FMA | 2183 | 4.3 | −0.5% |
+
+分解结论：两条 FMA 不论是否写同一寄存器、是否谓词化，都是 4 拍/strip（两条各 2 拍串行，与单条 FMA 的 2 拍/strip 一致，说明第二个 FMA 簇不服务同一块里的独立 FMA）；vpop 每条 1.25 拍/strip；唯一的"贵"组合是 **vcmp 写谓词之后、两条浮点谓词化操作读它**：6 拍而不是 4 拍。vcmp 单独 4 拍/strip（fcmp 单元），加一条谓词化 FMA 仍是 4 拍（重叠），加第二条就多 2 拍。pmix 里的谓词化 FMA 读的是 vpop 写的谓词，不贵。按此建模为一个**共享谓词端口**：vcmp 类写谓词、浮点类（FMA/FConv/FDiv）谓词化读各占 `pred_port_cycles` = 2 拍/strip；PLU（vpop）有自己的端口不占；整数类谓词化读也不占（`pred_port_int_cycles` = 0，设 1 会让 clamp 从 −18% 翻到 +17%）。
+
+效果：8 个谓词微基准平均误差从 7.5% 到 1.0%，nn 从 −8.7% 到 +1.2%（nn 的块正是 vcmp + 谓词化 FMA/sqrt）；divloop 从 −10% 到 −13%（它的分支归约与谓词化 FMA 争同一端口，模型现在略保守），clamp 仍 −18%（`@!vp1 vaddw` 是整数类，RTL 里它也有代价但小于 2 拍——RTL clamp 5.7 拍/strip，模型 4.7；给整数类读 1 拍就变 6.7，是端口占用与 age 轮转的相位效应，未再拟合）。pgain −8%、pathfinder −10% 没有变化：它们是 vpop + 谓词化整数/访存操作，不经过这个端口，残差另有来源。
+
+**多 bank 下的 lane 锁步**（`rtl/results/probe7*.log`、`tlv-probe7-l2-b2.log.gz`）。探针 7 用 64 位与 32 位单位步长 load/store 对照：
+
+| | 1 lane | 2 lane 1 bank | 2 lane 2 bank | 模型（2 bank，修正后） |
+|---|---|---|---|---|
+| load64 | 2126 | 2126 | 1095（1.87 beat/拍） | 1093 |
+| load32 | 1096 | 1096 | 837（1.22 beat/拍） | 834 |
+| store64 | 2127 | 2138 | 1263 | 1138（−9.9%） |
+| store32 | 1109 | 1263 | 1263 | 1144（−9.4%） |
+
+64 位元素时每条 lane 一次取 8 个元素 = 一整行，两条 lane 落在相邻的两行、两个 bank，2 bank 给出接近 2 倍；32 位时每 lane 只有半行，两条 lane 同一行同一 bank。TileLink 跟踪显示两条 lane 在同一行上逐拍交替（A、B、A、B），领先的 lane 写完半行后立刻进下一行（另一个 bank），这一拍两个 bank 各收一个请求，然后两条 lane 又在新行上碰撞——每行 4 个 beat 用 3 拍，1.33 beat/拍，与 RTL 837 一致。关键是仲裁：同拍同 bank 碰撞时**落后的 lane 赢**，所以领先的 lane 永远只领先一个 beat，两条 lane 不会错开一整行。模型原来的仲裁是固定顺序（lane 0 先），领先的 lane 会跑到一行之外、两条 lane 各占一个 bank，给出 2 beat/拍。修正：`lane_max_lead_beats` = 1（同一条访存指令上任一 lane 最多比最慢的、仍有 beat 未发的 lane 多发 1 个 beat），load32 从 580 到 834（RTL 837）。store32 另有每行约 1 拍的代价且不能被另一个 bank 掩盖（RTL 2 bank 与 1 bank 都是 1263），按 lane 侧换行停顿建模（`shared_line_store_turnaround` = 1.5，仅多 lane 且多 bank 且一个 strip 不足一行时生效），store32 从 889 到 1144。另外发现模型里经重试路径发出 beat 的 lane 在同一拍还会再发一个，已改为 VMU 每拍只发一个请求。
+
+2 lane + 2 bank 完整基准（§10.13 的表）修正后：saxpy −40% → −2.2%，csaxpy −40% → −6.1%，sfilter −29% → +10.3%，64 位内核与 dgemm/fma_peak 不变（−3%～−4%）；gather 仍 −28%——索引访存的 bank 冲突是随机的，RTL 两条 lane 锁步时冲突更集中，模型未覆盖（VGU 路径）。单 bank 的 1–16 lane 结果不受影响（锁步在单 bank 上本来就成立）。
+
+**回归基线**：`check_calibration.py` 现在覆盖 169 个条目（1/2/4/8/16 lane 与 2 lane + 2 bank 的基准与微基准、谓词微基准、1 与 4 lane 的 hcc/Rodinia 踪迹套件）。
+
 ## 11. 下一步
 
-1. 谓词密集的块（clamp −18%、pgain/pathfinder/nn −9%～−10%）：谓词逻辑单元与谓词化访存在 VIPU/VSU 路径上的调度细节，需要 vpop 密集的微基准或谓词单元的跟踪。
-2. store 通路仍是按并发行数查表的经验模型（10.10）；机械解释需要逐 beat 对比 8/16 lane 跟踪里 L2 的接受时刻或读 `BankedStore`。
+1. 谓词密集块的残差（clamp −18%、divloop −13%、pathfinder −10%、pgain −8%）：§10.14 的谓词端口只解释了 vcmp + 浮点谓词化读；整数类谓词化读的代价介于 0 与 2 拍之间，vpop + 谓词化访存的组合（pgain/pathfinder）需要新的微基准分解。
+2. store 通路仍是按并发行数查表的经验模型（10.10）；多 bank 下 store 类偏乐观 5%–10%、索引访存 −28%（§10.14），需要给 VGU 路径也加锁步并解释 2 bank 下 store 的每行代价。
 3. 跨步 4 B store 在 8/16 lane 下 +11%；1 lane 下 store 的布局波动（10.8）无法复现。
 4. VRU 在开源 RTL 上无法校验（SimDRAM 无延迟，§10.13）；要验证 `25-design-space.md` 的 VRU 结论需要换成有真实时序的 DRAM 模型（Chipyard 的 FASED/DRAMSim 后端）。多 bank L2 下模型缺少 lane 间锁步约束：32 位内核与索引访存偏乐观 28%–40%，store 类偏乐观 5%–14%（§10.13）；`25-design-space.md` 第 3 节中每 lane 一个 bank 的收益对 32 位内核被高估。
 5. Chisel 改动只在 `rtl/patches` 里；IBoxML 修复值得给 hwacha 上游提 issue/PR。

@@ -1,13 +1,13 @@
 {
  "bench/1L/csaxpy": {
   "rtl": 3859,
-  "model": 3803,
-  "err": -1.4511531484840632
+  "model": 3806,
+  "err": -1.3734128012438456
  },
  "bench/1L/daxpy": {
   "rtl": 6505,
-  "model": 6296,
-  "err": -3.2129131437355882
+  "model": 6299,
+  "err": -3.166794773251345
  },
  "bench/1L/dgemm_opt": {
   "rtl": 8402,
@@ -21,23 +21,23 @@
  },
  "bench/1L/gather": {
   "rtl": 8543,
-  "model": 8443,
-  "err": -1.1705489874751258
+  "model": 8453,
+  "err": -1.0534940887276132
  },
  "bench/1L/saxpy": {
   "rtl": 3255,
-  "model": 3289,
-  "err": 1.044546850998464
+  "model": 3292,
+  "err": 1.1367127496159755
  },
  "bench/1L/sfilter": {
   "rtl": 5264,
-  "model": 5627,
-  "err": 6.895896656534954
+  "model": 5631,
+  "err": 6.971884498480243
  },
  "bench/1L/vvadd": {
   "rtl": 6552,
-  "model": 6296,
-  "err": -3.907203907203907
+  "model": 6299,
+  "err": -3.8614163614163615
  },
  "micro/1L/micro_alu": {
   "rtl": 8223,
@@ -46,8 +46,8 @@
  },
  "micro/1L/micro_copy": {
   "rtl": 4474,
-  "model": 4244,
-  "err": -5.1408135896289675
+  "model": 4250,
+  "err": -5.0067054090299505
  },
  "micro/1L/micro_empty": {
   "rtl": 570,
@@ -76,13 +76,13 @@
  },
  "micro/1L/micro_inplace": {
   "rtl": 4521,
-  "model": 4241,
-  "err": -6.193320061933201
+  "model": 4242,
+  "err": -6.1712010617120105
  },
  "micro/1L/micro_ldst": {
   "rtl": 4345,
-  "model": 4244,
-  "err": -2.324510932105869
+  "model": 4250,
+  "err": -2.186421173762946
  },
  "micro/1L/micro_load": {
   "rtl": 2144,
@@ -101,33 +101,33 @@
  },
  "micro/1L/micro_sstride": {
   "rtl": 4207,
-  "model": 4441,
-  "err": 5.5621583075826
+  "model": 4447,
+  "err": 5.70477775136677
  },
  "micro/1L/micro_stld": {
   "rtl": 4184,
-  "model": 4248,
-  "err": 1.5296367112810707
+  "model": 4255,
+  "err": 1.6969407265774379
  },
  "micro/1L/micro_store": {
   "rtl": 2117,
-  "model": 2187,
-  "err": 3.3065658951346246
+  "model": 2193,
+  "err": 3.5899858290033064
  },
  "bench/2L/csaxpy": {
   "rtl": 3934,
-  "model": 3857,
-  "err": -1.9572953736654803
+  "model": 3694,
+  "err": -6.100660904931368
  },
  "bench/2L/daxpy": {
   "rtl": 6645,
-  "model": 6384,
-  "err": -3.927765237020316
+  "model": 6386,
+  "err": -3.8976674191121146
  },
  "bench/2L/dgemm_opt": {
   "rtl": 4776,
-  "model": 4572,
-  "err": -4.271356783919598
+  "model": 4565,
+  "err": -4.417922948073702
  },
  "bench/2L/fma_peak": {
   "rtl": 6165,
@@ -136,23 +136,23 @@
  },
  "bench/2L/gather": {
   "rtl": 8766,
-  "model": 8479,
-  "err": -3.274013232945471
+  "model": 8498,
+  "err": -3.0572667122975132
  },
  "bench/2L/saxpy": {
   "rtl": 3335,
-  "model": 3374,
-  "err": 1.169415292353823
+  "model": 3181,
+  "err": -4.617691154422789
  },
  "bench/2L/sfilter": {
   "rtl": 5429,
-  "model": 5369,
-  "err": -1.1051759071652238
+  "model": 5268,
+  "err": -2.9655553508933505
  },
  "bench/2L/vvadd": {
   "rtl": 6260,
-  "model": 6384,
-  "err": 1.9808306709265175
+  "model": 6386,
+  "err": 2.012779552715655
  },
  "micro/2L/micro_alu": {
   "rtl": 4155,
@@ -161,8 +161,8 @@
  },
  "micro/2L/micro_copy": {
   "rtl": 4246,
-  "model": 4336,
-  "err": 2.119642016015073
+  "model": 4338,
+  "err": 2.166745171926519
  },
  "micro/2L/micro_empty": {
   "rtl": 319,
@@ -176,13 +176,13 @@
  },
  "micro/2L/micro_inplace": {
   "rtl": 4187,
-  "model": 4336,
-  "err": 3.558633866730356
+  "model": 4337,
+  "err": 3.5825173155003585
  },
  "micro/2L/micro_ldst": {
   "rtl": 4188,
-  "model": 4336,
-  "err": 3.5339063992359123
+  "model": 4338,
+  "err": 3.5816618911174785
  },
  "micro/2L/micro_load": {
   "rtl": 2121,
@@ -196,28 +196,28 @@
  },
  "micro/2L/micro_stld": {
   "rtl": 4192,
-  "model": 4342,
-  "err": 3.5782442748091605
+  "model": 4343,
+  "err": 3.6020992366412212
  },
  "micro/2L/micro_store": {
   "rtl": 2232,
-  "model": 2288,
-  "err": 2.5089605734767026
+  "model": 2289,
+  "err": 2.553763440860215
  },
  "bench/4L/csaxpy": {
   "rtl": 3732,
-  "model": 3734,
-  "err": 0.05359056806002144
+  "model": 3704,
+  "err": -0.7502679528403001
  },
  "bench/4L/daxpy": {
   "rtl": 6637,
-  "model": 6607,
-  "err": -0.4520114509567576
+  "model": 6610,
+  "err": -0.4068103058610818
  },
  "bench/4L/dgemm_opt": {
   "rtl": 4544,
-  "model": 4344,
-  "err": -4.401408450704225
+  "model": 4341,
+  "err": -4.467429577464789
  },
  "bench/4L/fma_peak": {
   "rtl": 3093,
@@ -226,23 +226,23 @@
  },
  "bench/4L/gather": {
   "rtl": 8735,
-  "model": 8649,
-  "err": -0.9845449341728678
+  "model": 8658,
+  "err": -0.8815111619919863
  },
  "bench/4L/saxpy": {
   "rtl": 3298,
-  "model": 3221,
-  "err": -2.33474833232262
+  "model": 3191,
+  "err": -3.244390539721043
  },
  "bench/4L/sfilter": {
   "rtl": 5406,
-  "model": 5312,
-  "err": -1.7388087310395857
+  "model": 5281,
+  "err": -2.3122456529781723
  },
  "bench/4L/vvadd": {
   "rtl": 6655,
-  "model": 6607,
-  "err": -0.7212622088655146
+  "model": 6610,
+  "err": -0.67618332081142
  },
  "micro/4L/micro_alu": {
   "rtl": 2076,
@@ -251,8 +251,8 @@
  },
  "micro/4L/micro_copy": {
   "rtl": 4633,
-  "model": 4560,
-  "err": -1.5756529246708397
+  "model": 4562,
+  "err": -1.5324843513921864
  },
  "micro/4L/micro_empty": {
   "rtl": 186,
@@ -281,13 +281,13 @@
  },
  "micro/4L/micro_inplace": {
   "rtl": 4571,
-  "model": 4560,
-  "err": -0.24064756070881646
+  "model": 4561,
+  "err": -0.2187705097352877
  },
  "micro/4L/micro_ldst": {
   "rtl": 4563,
-  "model": 4560,
-  "err": -0.06574621959237344
+  "model": 4562,
+  "err": -0.021915406530791146
  },
  "micro/4L/micro_load": {
   "rtl": 2141,
@@ -306,28 +306,28 @@
  },
  "micro/4L/micro_sstride": {
   "rtl": 6086,
-  "model": 5790,
-  "err": -4.863621426224121
+  "model": 5791,
+  "err": -4.847190272757148
  },
  "micro/4L/micro_stld": {
   "rtl": 4555,
-  "model": 4566,
-  "err": 0.2414928649835346
+  "model": 4568,
+  "err": 0.2854006586169045
  },
  "micro/4L/micro_store": {
   "rtl": 2461,
-  "model": 2512,
-  "err": 2.072328321820398
+  "model": 2513,
+  "err": 2.1129622104835435
  },
  "bench/8L/csaxpy": {
   "rtl": 3914,
-  "model": 3762,
-  "err": -3.883495145631068
+  "model": 3732,
+  "err": -4.6499744506898315
  },
  "bench/8L/daxpy": {
   "rtl": 7736,
-  "model": 7717,
-  "err": -0.24560496380558428
+  "model": 7731,
+  "err": -0.06463288521199587
  },
  "bench/8L/dgemm_opt": {
   "rtl": 4438,
@@ -341,23 +341,23 @@
  },
  "bench/8L/gather": {
   "rtl": 9794,
-  "model": 9770,
-  "err": -0.2450479885644272
+  "model": 9779,
+  "err": -0.153154992852767
  },
  "bench/8L/saxpy": {
   "rtl": 3380,
-  "model": 3249,
-  "err": -3.8757396449704142
+  "model": 3219,
+  "err": -4.763313609467455
  },
  "bench/8L/sfilter": {
   "rtl": 5474,
-  "model": 5334,
-  "err": -2.557544757033248
+  "model": 5272,
+  "err": -3.6901717208622578
  },
  "bench/8L/vvadd": {
   "rtl": 7717,
-  "model": 7717,
-  "err": 0.0
+  "model": 7731,
+  "err": 0.18141764934560062
  },
  "micro/8L/micro_alu": {
   "rtl": 1080,
@@ -366,8 +366,8 @@
  },
  "micro/8L/micro_copy": {
   "rtl": 5635,
-  "model": 5677,
-  "err": 0.7453416149068323
+  "model": 5683,
+  "err": 0.8518189884649512
  },
  "micro/8L/micro_empty": {
   "rtl": 122,
@@ -396,18 +396,18 @@
  },
  "micro/8L/micro_inplace": {
   "rtl": 5639,
-  "model": 5678,
-  "err": 0.6916119879411243
+  "model": 5682,
+  "err": 0.7625465508068806
  },
  "micro/8L/micro_ld4st1": {
   "rtl": 12106,
-  "model": 11797,
-  "err": -2.5524533289278044
+  "model": 11829,
+  "err": -2.2881215925987113
  },
  "micro/8L/micro_ldst": {
   "rtl": 5639,
-  "model": 5677,
-  "err": 0.6738783472246852
+  "model": 5683,
+  "err": 0.7802801915233197
  },
  "micro/8L/micro_load": {
   "rtl": 2115,
@@ -446,13 +446,13 @@
  },
  "bench/16L/csaxpy": {
   "rtl": 3919,
-  "model": 3984,
-  "err": 1.658586374075019
+  "model": 3873,
+  "err": -1.1737688185761674
  },
  "bench/16L/daxpy": {
   "rtl": 8179,
-  "model": 8174,
-  "err": -0.0611321677466683
+  "model": 8172,
+  "err": -0.08558503484533561
  },
  "bench/16L/dgemm_opt": {
   "rtl": 4376,
@@ -466,23 +466,23 @@
  },
  "bench/16L/gather": {
   "rtl": 10233,
-  "model": 10225,
-  "err": -0.07817844229453728
+  "model": 10220,
+  "err": -0.12703996872862308
  },
  "bench/16L/saxpy": {
   "rtl": 3466,
-  "model": 3470,
-  "err": 0.1154068090017311
+  "model": 3360,
+  "err": -3.058280438545874
  },
  "bench/16L/sfilter": {
   "rtl": 5482,
-  "model": 5478,
-  "err": -0.07296607077708865
+  "model": 5413,
+  "err": -1.2586647209047792
  },
  "bench/16L/vvadd": {
   "rtl": 8182,
-  "model": 8174,
-  "err": -0.09777560498655585
+  "model": 8172,
+  "err": -0.12221950623319482
  },
  "micro/16L/micro_alu": {
   "rtl": 540,
@@ -491,8 +491,8 @@
  },
  "micro/16L/micro_copy": {
   "rtl": 6105,
-  "model": 6129,
-  "err": 0.3931203931203931
+  "model": 6124,
+  "err": 0.31122031122031124
  },
  "micro/16L/micro_empty": {
   "rtl": 100,
@@ -521,13 +521,13 @@
  },
  "micro/16L/micro_inplace": {
   "rtl": 6094,
-  "model": 6128,
-  "err": 0.5579258286839515
+  "model": 6123,
+  "err": 0.47587791270101737
  },
  "micro/16L/micro_ldst": {
   "rtl": 6097,
-  "model": 6129,
-  "err": 0.5248482860423159
+  "model": 6124,
+  "err": 0.44284074134820406
  },
  "micro/16L/micro_load": {
   "rtl": 2140,
@@ -559,30 +559,215 @@
   "model": 4075,
   "err": 0.9412930393856824
  },
+ "bench/2b2L/csaxpy": {
+  "rtl": 3410,
+  "model": 3201,
+  "err": -6.129032258064516
+ },
+ "bench/2b2L/daxpy": {
+  "rtl": 3334,
+  "model": 3196,
+  "err": -4.139172165566887
+ },
+ "bench/2b2L/dgemm_opt": {
+  "rtl": 4306,
+  "model": 4177,
+  "err": -2.995819786344635
+ },
+ "bench/2b2L/fma_peak": {
+  "rtl": 6165,
+  "model": 6179,
+  "err": 0.22708840227088403
+ },
+ "bench/2b2L/gather": {
+  "rtl": 7150,
+  "model": 5138,
+  "err": -28.13986013986014
+ },
+ "bench/2b2L/saxpy": {
+  "rtl": 2812,
+  "model": 2751,
+  "err": -2.1692745376955904
+ },
+ "bench/2b2L/sfilter": {
+  "rtl": 4156,
+  "model": 4582,
+  "err": 10.250240615976901
+ },
+ "bench/2b2L/vvadd": {
+  "rtl": 3331,
+  "model": 3196,
+  "err": -4.052836985890123
+ },
+ "micro/2b2L/micro_alu": {
+  "rtl": 4150,
+  "model": 4128,
+  "err": -0.5301204819277109
+ },
+ "micro/2b2L/micro_copy": {
+  "rtl": 2283,
+  "model": 2171,
+  "err": -4.905825667980727
+ },
+ "micro/2b2L/micro_empty": {
+  "rtl": 314,
+  "model": 285,
+  "err": -9.235668789808917
+ },
+ "micro/2b2L/micro_fdiv_d": {
+  "rtl": 6220,
+  "model": 6187,
+  "err": -0.5305466237942122
+ },
+ "micro/2b2L/micro_fdiv_s": {
+  "rtl": 6219,
+  "model": 6185,
+  "err": -0.5467116899823122
+ },
+ "micro/2b2L/micro_fma_dep": {
+  "rtl": 4124,
+  "model": 4131,
+  "err": 0.1697381183317168
+ },
+ "micro/2b2L/micro_fsqrt_s": {
+  "rtl": 10294,
+  "model": 10281,
+  "err": -0.12628715756751505
+ },
+ "micro/2b2L/micro_inplace": {
+  "rtl": 2279,
+  "model": 2163,
+  "err": -5.089951733216323
+ },
+ "micro/2b2L/micro_ld4st1": {
+  "rtl": 5484,
+  "model": 5376,
+  "err": -1.9693654266958425
+ },
+ "micro/2b2L/micro_ldst": {
+  "rtl": 2280,
+  "model": 2171,
+  "err": -4.780701754385965
+ },
+ "micro/2b2L/micro_load": {
+  "rtl": 1085,
+  "model": 1093,
+  "err": 0.7373271889400922
+ },
+ "micro/2b2L/micro_load2": {
+  "rtl": 2116,
+  "model": 2126,
+  "err": 0.4725897920604915
+ },
+ "micro/2b2L/micro_lstride": {
+  "rtl": 2468,
+  "model": 2118,
+  "err": -14.181523500810373
+ },
+ "micro/2b2L/micro_sstride": {
+  "rtl": 2631,
+  "model": 2265,
+  "err": -13.911060433295326
+ },
+ "micro/2b2L/micro_st2": {
+  "rtl": 2463,
+  "model": 2220,
+  "err": -9.866017052375152
+ },
+ "micro/2b2L/micro_stld": {
+  "rtl": 2288,
+  "model": 2176,
+  "err": -4.895104895104895
+ },
+ "micro/2b2L/micro_store": {
+  "rtl": 1251,
+  "model": 1138,
+  "err": -9.03277378097522
+ },
+ "micro/1L/micro_fma2_indep": {
+  "rtl": 2094,
+  "model": 2061,
+  "err": -1.5759312320916905
+ },
+ "micro/1L/micro_fma2_waw": {
+  "rtl": 2067,
+  "model": 2061,
+  "err": -0.29027576197387517
+ },
+ "micro/1L/micro_ld4st1": {
+  "rtl": 11123,
+  "model": 10700,
+  "err": -3.802930863975546
+ },
+ "micro/1L/micro_pcmp": {
+  "rtl": 2093,
+  "model": 2058,
+  "err": -1.6722408026755853
+ },
+ "micro/1L/micro_pcmp_2diff": {
+  "rtl": 3150,
+  "model": 3088,
+  "err": -1.9682539682539681
+ },
+ "micro/1L/micro_pcmp_2use": {
+  "rtl": 3140,
+  "model": 3088,
+  "err": -1.6560509554140128
+ },
+ "micro/1L/micro_pcmp_use": {
+  "rtl": 2071,
+  "model": 2064,
+  "err": -0.3380009657170449
+ },
+ "micro/1L/micro_pfma2_same": {
+  "rtl": 2068,
+  "model": 2063,
+  "err": -0.24177949709864605
+ },
+ "micro/1L/micro_pmix": {
+  "rtl": 2158,
+  "model": 2148,
+  "err": -0.4633920296570899
+ },
+ "micro/1L/micro_st2": {
+  "rtl": 4181,
+  "model": 4350,
+  "err": 4.04209519253767
+ },
+ "micro/1L/micro_vpop": {
+  "rtl": 2577,
+  "model": 2570,
+  "err": -0.2716336825766395
+ },
+ "micro/1L/micro_vpop_indep": {
+  "rtl": 2603,
+  "model": 2570,
+  "err": -1.2677679600461007
+ },
  "rodinia/1L/nn": {
   "rtl": 14599,
-  "model": 13323,
-  "err": -8.740324679772588
+  "model": 14779,
+  "err": 1.2329611617234058
  },
  "rodinia/1L/kmeans_swap": {
   "rtl": 21645,
-  "model": 20815,
-  "err": -3.8346038346038345
+  "model": 20793,
+  "err": -3.9362439362439363
  },
  "rodinia/1L/kmeans_c": {
   "rtl": 63993,
-  "model": 64310,
-  "err": 0.49536668073070494
+  "model": 63361,
+  "err": -0.9876080196271467
  },
  "rodinia/1L/pgain": {
   "rtl": 25272,
-  "model": 23022,
-  "err": -8.903133903133902
+  "model": 23337,
+  "err": -7.656695156695156
  },
  "rodinia/1L/pathfinder": {
   "rtl": 144765,
-  "model": 130836,
-  "err": -9.621800849652885
+  "model": 130688,
+  "err": -9.724035505819776
  },
  "hcc/1L/hcc_saxpy": {
   "rtl": 875,
@@ -596,8 +781,8 @@
  },
  "hcc/1L/hcc_divloop": {
   "rtl": 16711,
-  "model": 17231,
-  "err": 3.1117228173059663
+  "model": 14489,
+  "err": -13.296630961642032
  },
  "hcc/1L/hcc_stencil": {
   "rtl": 1441,
@@ -611,33 +796,33 @@
  },
  "rodinia/4L/nn": {
   "rtl": 5718,
-  "model": 5250,
-  "err": -8.184679958027282
+  "model": 5268,
+  "err": -7.869884575026233
  },
  "rodinia/4L/kmeans_swap": {
   "rtl": 18929,
-  "model": 18425,
-  "err": -2.6625812245760474
+  "model": 18155,
+  "err": -4.0889640234560725
  },
  "rodinia/4L/kmeans_c": {
   "rtl": 44538,
-  "model": 50209,
-  "err": 12.732947146257128
+  "model": 50199,
+  "err": 12.71049440926849
  },
  "rodinia/4L/pgain": {
   "rtl": 12238,
-  "model": 12354,
-  "err": 0.9478672985781991
+  "model": 12131,
+  "err": -0.8743258702402353
  },
  "rodinia/4L/pathfinder": {
   "rtl": 70886,
-  "model": 66606,
-  "err": -6.037863611996727
+  "model": 66533,
+  "err": -6.140845865191999
  },
  "hcc/4L/hcc_saxpy": {
   "rtl": 1305,
-  "model": 1235,
-  "err": -5.363984674329502
+  "model": 1242,
+  "err": -4.827586206896552
  },
  "hcc/4L/hcc_clamp": {
   "rtl": 928,
@@ -646,17 +831,17 @@
  },
  "hcc/4L/hcc_divloop": {
   "rtl": 4812,
-  "model": 5608,
-  "err": 16.54197838736492
+  "model": 4960,
+  "err": 3.0756442227763925
  },
  "hcc/4L/hcc_stencil": {
   "rtl": 1569,
-  "model": 1494,
-  "err": -4.780114722753346
+  "model": 1501,
+  "err": -4.3339706819630335
  },
  "hcc/4L/hcc_gather": {
   "rtl": 1960,
-  "model": 1876,
-  "err": -4.285714285714286
+  "model": 1883,
+  "err": -3.9285714285714284
  }
 }

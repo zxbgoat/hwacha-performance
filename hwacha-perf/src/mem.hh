@@ -80,6 +80,7 @@ protected:
 // 每个目的端口一条 layer，占用 = 包大小 / 位宽（周期），繁忙时对源端口 retry（gem5 Layer 语义）。
 class Xbar : public sim::ClockedObject {
 public:
+    struct RouteState : Packet::SenderState { int src; };
     struct P {
         int nCpuPorts, nMemPorts;
         unsigned widthBytes = 16;
@@ -116,7 +117,6 @@ private:
         bool recvTimingResp(Packet *pkt) override { return x.recvTimingResp(pkt, idx); }
         void recvReqRetry() override { x.recvReqRetry(idx); }
     };
-    struct RouteState : Packet::SenderState { int src; };
 
     bool recvTimingReq(Packet *pkt, int src);
     bool recvTimingResp(Packet *pkt, int memIdx);
@@ -150,7 +150,7 @@ public:
         bool supportsAtomics = true;
         // store 通路（InclusiveCache 对 PutPartial 的读-改-写，所有 lane 共享；docs/24 10.9–10.10 节）：
         //   每个 store beat 占用 storeCycles 拍；与上一个 store beat 不在同一行时加 storeSwitch，部分写（小于一个 beat）再加 partialStoreSwitch；
-        //   再加 storeConflict 表按"并发行数 n"插值出的附加拍数——n = 当前行上一次出现（最近 storeWindow 个 beat 内）以来经过的不同行数 + 1，
+        //   再加 storeConflict 表按"并发流数 n"插值出的附加拍数——n = 本 (行, 来源) 上一次出现（最近 storeWindow 个 beat 内）以来经过的不同 (行, 来源) 数 + 1，
         //   顺序流 n = 1，L 条 lane 交错访问不同行则 n = L，行首拍沿用上一拍的 n；表按 log2(n) 线性插值，为空则关闭。
         //   分数代价按累计信用折算成整拍。三种机械模型（命中 MSHR 池、读-改-写合并窗口、子 bank 冲突排队）都拟合不了 1–16 lane，已删除。
         double storeCycles = 1.0, storeSwitch = 0.0, partialStoreSwitch = 0.0;
@@ -218,9 +218,9 @@ private:
     Tick _storeBusyUntil = 0;             // store 通路忙到的时刻
     double _storeCredit = 0;              // 分数占用的累计信用
     Addr _lastStoreLine = ~Addr(0);
-    std::deque<Addr> _recentStoreBeats;   // 最近 storeWindow 个 store beat 的行
+    std::deque<std::pair<Addr, int>> _recentStoreBeats;   // 最近 storeWindow 个 store beat 的 (行, 来源端口)
     double _lastStoreConcurrency = 1.0;
-    double storeBeatCost(Addr line, unsigned size);   // 一个 store beat 占用 store 通路的拍数
+    double storeBeatCost(Addr line, unsigned size, int src);   // 一个 store beat 占用 store 通路的拍数
     CpuPort _cpu;
     MemPort _mem;
     sim::EventFunctionWrapper _respEvent, _memEvent, _cpuRetryEvent;

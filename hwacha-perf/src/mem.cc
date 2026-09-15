@@ -188,7 +188,7 @@ void L2Bank::installLine(Addr addr, bool dirty) {
 }
 
 // 一个 store beat 占用 store 通路的拍数：基础拍数 + 换行/部分写代价 + 并发行数查表（见 mem.hh 中 P 的说明）
-double L2Bank::storeBeatCost(Addr la, unsigned size) {
+double L2Bank::storeBeatCost(Addr la, unsigned size, int src) {
     double cost = _p.storeCycles;
     if (la != _lastStoreLine) {
         cost += _p.storeSwitch;
@@ -197,15 +197,19 @@ double L2Bank::storeBeatCost(Addr la, unsigned size) {
     _lastStoreLine = la;
     if (_p.storeConflict.empty()) return cost;
     // 并发行数：从当前行上一次出现到现在经过了几个不同的行（顺序流 0，L 条 lane 交错 L-1）；行首拍沿用上一拍
+    // 并发行数：从当前行上一次出现到现在经过了几个不同的行（顺序流 0，L 条 lane 交错 L-1）；行首拍沿用上一拍。
+    // 按行而不按 (行, 来源) 计：两条 lane 交错写同一行（32 位元素）的 beat 在 L2 里合并成一次读-改-写，RTL 16 lane 单精度
+    // 内核显示其代价接近 8 行并发而不是 16 流并发（按 (行, 来源) 计会高估 18%）
+    (void)src;
     double n = _lastStoreConcurrency;
     std::set<Addr> between; bool found = false;
     for (auto it = _recentStoreBeats.rbegin(); it != _recentStoreBeats.rend(); ++it) {
-        if (*it == la) { found = true; break; }
-        between.insert(*it);
+        if (it->first == la) { found = true; break; }
+        between.insert(it->first);
     }
     if (found) n = (double)between.size() + 1.0;
     _lastStoreConcurrency = n;
-    _recentStoreBeats.push_back(la);
+    _recentStoreBeats.emplace_back(la, src);
     if (_recentStoreBeats.size() > _p.storeWindow) _recentStoreBeats.pop_front();
     const auto &t = _p.storeConflict;
     if (n <= t.front().first) return cost + t.front().second;
@@ -231,7 +235,9 @@ bool L2Bank::recvTimingReq(Packet *pkt) {
         if (pr != _probeLines.end()) { _probeLines.erase(pr); probe = _p.probeCycles; ++*stProbes; }
     }
     if (pkt->isWrite() && pkt->cmd != Packet::PrefetchReq) {
-        _storeCredit += storeBeatCost(la, pkt->size) - 1.0;
+        int src = -1;
+        if (!pkt->senderStates.empty()) if (auto *rs = dynamic_cast<Xbar::RouteState *>(pkt->senderStates.back())) src = rs->src;
+        _storeCredit += storeBeatCost(la, pkt->size, src) - 1.0;
         Cycles extra = 0;
         if (_storeCredit >= 1.0) { extra = (Cycles)_storeCredit; _storeCredit -= (double)extra; }
         else if (_storeCredit < 0) _storeCredit = 0;

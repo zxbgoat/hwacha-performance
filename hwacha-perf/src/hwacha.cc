@@ -39,7 +39,7 @@ HwachaParams HwachaParams::from(const sim::Params &p) {
     h.freqGhz = p.getDouble("freq_ghz", h.freqGhz);
     h.storeBeatCycles = p.getDouble("store_beat_cycles", h.storeBeatCycles);
     h.loadBeatCycles = p.getDouble("load_beat_cycles", h.loadBeatCycles);
-    I("vf_block_overhead", h.vfBlockOverhead); I("vf_lane_sync_cycles", h.vfLaneSyncCycles);
+    I("vf_block_overhead", h.vfBlockOverhead); I("vf_lane_sync_cycles", h.vfLaneSyncCycles); I("lane_max_lead_beats", h.laneMaxLeadBeats); h.sharedLineStoreTurnaround = p.getDouble("shared_line_store_turnaround", h.sharedLineStoreTurnaround); I("pred_port_cycles", h.predPortCycles); I("pred_port_int_cycles", h.predPortIntCycles);
     h.commitLog = p.getBool("commit_log", false);
     return h;
 }
@@ -213,8 +213,14 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
     unsigned nElems = std::max(1u, b.nActive(k));
     Cycles fop = now + rp + 1;
     bool pred = !ins.pred.empty();
+    // 共享谓词端口：谓词化的非 PLU 操作读谓词、vcmp 类（FCmp/Cmp）写谓词都要占 predPortCycles 拍
+    // 经验规则（RTL pcmp_* 微基准）：vcmp 类写谓词与浮点类（FMA/FConv/FDiv）谓词化读共用一个端口；整数 ALU/PLU 的谓词读不占
+    bool fpClass = kind == Kind::Fma || kind == Kind::FConv || kind == Kind::FDiv;
+    bool intClass = kind == Kind::Alu || kind == Kind::IMul || kind == Kind::IDiv;
+    unsigned predCyc = ((pred && fpClass) || ((kind == Kind::FCmp || kind == Kind::Cmp) && ins.writesPrf())) ? _p.predPortCycles
+                     : (pred && intClass) ? _p.predPortIntCycles : 0;
     if (rp && !_readPort.free(now, rp)) return "rport";
-    if (pred && !_predRead.free(now)) return "pport";
+    if (predCyc && !_predRead.free(now, predCyc)) return "pport";
     std::string unit;
     unsigned lat = 0;
     Cycles writeTime = NoCycle;
@@ -270,7 +276,7 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
     if (const char *h = hazard(b, k, now, writeTime, true)) return h;
     // ---- 发射 ----
     if (rp) { _readPort.reserve(now, rp); readPortBusy += rp; }
-    if (pred) _predRead.reserve(now);
+    if (predCyc) _predRead.reserve(now, predCyc);
     if (!unit.empty()) {
         _units[unit].reserve(fop, occupancy);
         for (unsigned i : LATCH_GROUPS.at(unit)) _latches[i].reserve(now + 1, rp + 1);
@@ -299,6 +305,8 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
 void Lane::vmuStep(Cycles now) {
     vmuReason = "idle";
     if (_portBlocked) { vmuReason = "port_busy"; return; }
+    // 重试路径本拍已经发过一个 beat：VMU 每拍只有一个 A 通道请求（否则重试的 lane 会在一拍内发两个 beat，永远领先另一条 lane 一行）
+    if (_lastBeatCycle == now) { vmuReason = "busy"; return; }
     if (now < _vmuStallUntil) { vmuReason = "tlb"; return; }
     if (_portCredit >= 1.0) { _portCredit -= 1.0; vmuReason = "port_occ"; return; }
     if (vmuQueue.empty()) return;
@@ -313,6 +321,15 @@ void Lane::vmuStep(Cycles now) {
         if (need == NoCycle || need > now) { vmuReason = isStore ? "wait_data" : "wait_addr"; return; }
     }
     if (_outstanding >= _p.nVmtEntries) { vmuReason = "vmt_full"; return; }
+    // lane 间锁步：RTL 的各 lane 在同一条访存指令上几乎同步推进（2 bank L2 下 32 位内核两条 lane 撞同一个 bank，
+    // 只快 16%–23%，见 docs/24 §10.13）；限制本 lane 不能比最慢的 lane 多发超过 laneMaxLeadBeats 个 beat
+    if (_p.laneMaxLeadBeats && _p.nLanes > 1) {
+        // 只与还有 beat 要发的 lane 比较（谓词化访存各 lane 的 beat 数不同，已发完的 lane 不再约束别人）
+        uint64_t slowest = b->beatsSent;
+        for (auto &other : b->op->lanes)
+            if (other && other.get() != b && other->nstrips && other->stripPtr < other->nstrips) slowest = std::min(slowest, other->beatsSent);
+        if (b->beatsSent >= slowest + _p.laneMaxLeadBeats) { vmuReason = "lane_sync"; return; }   // 发出这个 beat 后领先不得超过 laneMaxLeadBeats
+    }
     // VCU 序列器操作的语义：load 的 WAW/WAR 冒险未清除前不放行该 strip 的请求，
     // 否则返回数据会在 VLDQ 中队头阻塞（硬件亦由序列器在 VCU 处检查）
     if (ins.isLoad() && b->beatPtr == 0 && !loadWriteGate(*b, s, now)) { vmuReason = "wait_hazard"; return; }
@@ -323,6 +340,17 @@ void Lane::vmuStep(Cycles now) {
         return;
     }
     const LaneOp::Beat &beat = b->beats[s][b->beatPtr];
+    // 多 lane 时一个 strip 不足一行（32 位元素：8 个元素 = 32 B），两条 lane 各写半行，L2 要把两半合并成一次读-改-写；
+    // RTL（probe7 2 bank）显示这样的行每行多花约 1 拍且不能被另一个 bank 掩盖——按 lane 侧换行停顿建模
+    if (_p.sharedLineStoreTurnaround > 0 && _p.nLanes > 1 && _p.l2Banks > 1 && isStore && ins.mode == Mode::Unit && ins.elsize * _p.nStrip() < _h.lineBytes()) {
+        uint64_t line = beat.addr / _h.lineBytes();
+        if (b->lastLine != ~0ull && line != b->lastLine) {
+            b->lastLine = line;
+            _portCredit += _p.sharedLineStoreTurnaround;
+            if (_portCredit >= 1.0) { _portCredit -= 1.0; vmuReason = "line_turn"; return; }
+        }
+        b->lastLine = line;
+    }
     uint64_t page = beat.addr / _p.pageBytes;
     auto it = std::find(_tlb.begin(), _tlb.end(), page);
     if (it == _tlb.end()) {
@@ -339,7 +367,8 @@ void Lane::vmuStep(Cycles now) {
     auto *bs = new BeatState(); bs->lo = b; bs->strip = s; bs->beat = b->beatPtr;
     pkt->pushSenderState(bs);
     if (!_port.sendTimingReq(pkt)) { _portBlocked = true; _pendingPkt = pkt; _pendingBs = bs; vmuReason = "port_busy"; return; }
-    ++_outstanding;
+    _lastBeatCycle = now;
+    ++_outstanding; ++b->beatsSent;
     if (ins.isLoad()) ++loadBeats; else ++storeBeats;
     // store_beat_cycles 只作用于单位步长的 16 B store beat（RTL：跨步/索引 store 与 load 一样每元素 1 拍）
     _portCredit += ((isStore && ins.mode == Mode::Unit) ? _p.storeBeatCycles : _p.loadBeatCycles) - 1.0;
@@ -359,7 +388,8 @@ void Lane::recvReqRetry() {
         _pendingPkt = nullptr; _pendingBs = nullptr; _portBlocked = false;
         LaneOp *b = bs->lo;
         const Instr &ins = *b->op->ins;
-        ++_outstanding;
+        _lastBeatCycle = _h.curCycle();
+        ++_outstanding; ++b->beatsSent;
         if (ins.isLoad()) ++loadBeats; else ++storeBeats;
         if (++b->beatPtr >= b->beats[bs->strip].size()) {
             if (ins.isStore()) _vsdqUsed -= std::min(_vsdqUsed, b->vsdqEntries[bs->strip]);

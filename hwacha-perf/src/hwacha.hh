@@ -32,6 +32,14 @@ struct HwachaParams {
     bool pluPort = true;
     unsigned pluOccupancy = 0;       // 谓词逻辑单元每 strip 的占用拍数（0 = 每拍一个 strip）             // 谓词逻辑单元（vpop 等）走独立的 VIPU 调度口          // 序列器 age 规则（见 Lane::schedule）；false 为旧的严格最老优先
     unsigned vfLaneSyncCycles = 0;   // 多 lane 时每个 vf 块再加的固定周期（跨 lane 同步/收尾；RTL micro_empty 校准）
+    unsigned laneMaxLeadBeats = 0;
+    double sharedLineStoreTurnaround = 0; // 多 lane、多 L2 bank 且一个 strip 不足一行（如 32 位元素）时，store 每换一行 VMU 停顿的拍数（RTL 2 bank 校准；
+                                          // 单 bank 时两条 lane 的 beat 本来就在 bank 上串行，该代价被仲裁等待吸收，不计）
+    unsigned l2Banks = 1;             // 由 main 传入，仅用于上面这条规则
+    // 谓词端口：非 PLU 的谓词化向量操作读谓词、以及 vcmp 类写谓词，各占共享谓词端口 predPortCycles 拍/strip（RTL 校准 2：
+    // vcmp + 两条互斥谓词化 FMA 每 strip 6 拍而不是 4）；PLU（vpop 等）有自己的端口不计
+    unsigned predPortCycles = 1;
+    unsigned predPortIntCycles = 0;  // 整数 ALU 类谓词化读占谓词端口的拍数（0 = 不占）   // 同一访存指令上，一条 lane 最多比最慢的 lane 多发的 beat 数（0 = 不限制；RTL 2 bank 校准）
     bool buildVru = true;
     unsigned vruMaxOutstanding = 20, vruEarlyIgnore = 1;
     uint64_t vruMaxRunaheadBytes = 1ull << 24;
@@ -100,6 +108,8 @@ struct LaneOp {
     std::vector<unsigned> vsdqEntries;   // 每 strip 占用的 VSDQ 条目数（按 16 B 数据计，跨步/索引 store 每元素一个请求但数据量不变）
     std::vector<Cycles> lastWrite;
     unsigned stripPtr = 0, beatPtr = 0, stripsSent = 0;
+    uint64_t beatsSent = 0;       // 已发出的 beat 总数（lane 间锁步用）
+    uint64_t lastLine = ~0ull;    // 上一个 beat 的行（共享行换行停顿用）
     Cycles vmuStart = 0;
     Cycles lastIssue = NoCycle;   // 上一个 strip 的发射拍：RTL 序列器的 age 规则——同一条目 nBanks 拍内只能发一个 strip
     bool finished = false;
@@ -131,6 +141,7 @@ public:
     std::string lastReason = "empty", vmuReason = "idle";
     // 统计
     uint64_t stripsIssued = 0, loadBeats = 0, storeBeats = 0, readPortBusy = 0, writePortBusy = 0, beatsReturned = 0;
+    Cycles _lastBeatCycle = NoCycle;   // 本拍是否已经（经重试路径）发出过 beat：VMU 每拍只发一个请求
     unsigned outstanding() const { return _outstanding; }
     size_t vldqSize() const { return _vldq.size(); }
     unsigned vsdqUsed() const { return _vsdqUsed; }
