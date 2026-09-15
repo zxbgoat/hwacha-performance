@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
 .claude/settings.local.json
-cc/build/
+hwacha-perf/build/
 rtl/*.riscv
 rtl/results/*.stdout

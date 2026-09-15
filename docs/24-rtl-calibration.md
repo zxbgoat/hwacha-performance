@@ -332,7 +332,7 @@ load 在所有偏移下都是 2109 拍（每 beat 1.03 拍）。copy 的目的�
 
 4 lane 的 TileLink 跟踪（`tlv-micro-n4096-l4.log`）给出机制：四条 lane 按 64 B 行交错，A 通道严格轮流（每个请求平均等 3.0 拍），load 仍是每拍 1 个；store 只有 0.86 beat/拍，L2 的 store 延迟 19.5 拍（1 lane 15.1）、MSHR 均值 8.3（1 lane 5.3）、A 通道被 L2 反压 15%（1 lane 5%）；跨步 store 0.69 beat/拍、延迟 40 拍。区别在于连续两个 store beat 是否落在同一行：1 lane 74% 是同一行（排进同一个 MSHR，便宜），4 lane 只有 2%（每个 beat 都要新分配 MSHR、做读-改-写）。
 
-据此把 store 的附加代价从 lane 的 VMU 端口（`store_beat_cycles`，每 lane 一份，多 lane 时会被放大 lane 倍）移到 **L2 bank 的 store 通路**（`cc/src/mem.cc` `L2Bank`，所有 lane 共享）：每个 store beat 占 `l2_store_beat_cycles`（1.0）拍，与上一个 store beat 不在同一行时加 `l2_store_switch`（0.16），若还是部分写（小于 16 B 的跨步/索引 store）再加 `l2_partial_store_switch`（0.33），分数按累计信用折算成整拍。跨步/索引 store 的请求大小改为元素大小以便 L2 区分部分写。三个 RTL 配置的 `store_beat_cycles` 回到 1.0。
+据此把 store 的附加代价从 lane 的 VMU 端口（`store_beat_cycles`，每 lane 一份，多 lane 时会被放大 lane 倍）移到 **L2 bank 的 store 通路**（`hwacha-perf/src/mem.cc` `L2Bank`，所有 lane 共享）：每个 store beat 占 `l2_store_beat_cycles`（1.0）拍，与上一个 store beat 不在同一行时加 `l2_store_switch`（0.16），若还是部分写（小于 16 B 的跨步/索引 store）再加 `l2_partial_store_switch`（0.33），分数按累计信用折算成整拍。跨步/索引 store 的请求大小改为元素大小以便 L2 区分部分写。三个 RTL 配置的 `store_beat_cycles` 回到 1.0。
 
 改动后的 C++ 模型误差（同一组参数）：
 
@@ -370,7 +370,7 @@ load 在所有偏移下都是 2109 拍（每 beat 1.03 拍）。copy 的目的�
 | micro_copy | 4474 | 4246 | 4633 | 5641 | 6105 | |
 | micro_sstride（4 B 跨步 store） | 4207 | — | 6086 | 7227 | 8031 | 每元素 1.03 → 1.49 → 1.76 → 1.96 拍 |
 
-8 lane 的 TileLink 跟踪（`tlv-micro-n4096-l8.log`）：load 仍是每拍 1 个（每个 lane 的请求平均等 7.0 拍，严格轮流）；store 0.59 beat/拍，L2 输入被反压的时间占 40%，MSHR 均值 8.3、峰值 10；store 延迟 24 拍（4 lane 19.5、1 lane 15）。机制是 InclusiveCache 对 PutPartial 的读-改-写：一条 lane 顺序写一行时四个 beat 连续到达、排进同一个 MSHR 后合并处理，几乎不多花时间；L 条 lane 交错时同时有 L 行各自在做读-改-写，数据阵列子 bank 冲突与 MSHR 占用随 L 增长，每 beat 代价从 1.05 拍升到接近 2 拍（读 + 写各一拍）后饱和。试过三种机械模型（命中 MSHR 池 + 行内串行服务、读-改-写合并窗口、按行内 beat 位置分子 bank 的冲突排队）都不能同时拟合 1–16 lane：模型里各 lane 的相位与 RTL 严格轮流的相位不同，冲突率对不上。最终采用**按并发行数查表**的经验模型（`cc/src/mem.cc` `L2Bank`，参数 `l2_store_conflict`）：每个 store beat 的附加代价 = 表(n) 按 log2(n) 插值，n = "当前行上一次出现以来经过的不同行数 + 1"（顺序流 n = 1，L 条 lane 交错访问不同行则 n = L；行首拍沿用上一拍的 n；窗口 `l2_store_window` = 32 个 beat）。RTL 配置的表为 `1:0.05, 2:0.09, 4:0.20, 8:0.75, 16:0.97`，部分写换行再加 `l2_partial_store_switch` 0.2。之前的换行代价（`l2_store_switch`）置 0。
+8 lane 的 TileLink 跟踪（`tlv-micro-n4096-l8.log`）：load 仍是每拍 1 个（每个 lane 的请求平均等 7.0 拍，严格轮流）；store 0.59 beat/拍，L2 输入被反压的时间占 40%，MSHR 均值 8.3、峰值 10；store 延迟 24 拍（4 lane 19.5、1 lane 15）。机制是 InclusiveCache 对 PutPartial 的读-改-写：一条 lane 顺序写一行时四个 beat 连续到达、排进同一个 MSHR 后合并处理，几乎不多花时间；L 条 lane 交错时同时有 L 行各自在做读-改-写，数据阵列子 bank 冲突与 MSHR 占用随 L 增长，每 beat 代价从 1.05 拍升到接近 2 拍（读 + 写各一拍）后饱和。试过三种机械模型（命中 MSHR 池 + 行内串行服务、读-改-写合并窗口、按行内 beat 位置分子 bank 的冲突排队）都不能同时拟合 1–16 lane：模型里各 lane 的相位与 RTL 严格轮流的相位不同，冲突率对不上。最终采用**按并发行数查表**的经验模型（`hwacha-perf/src/mem.cc` `L2Bank`，参数 `l2_store_conflict`）：每个 store beat 的附加代价 = 表(n) 按 log2(n) 插值，n = "当前行上一次出现以来经过的不同行数 + 1"（顺序流 n = 1，L 条 lane 交错访问不同行则 n = L；行首拍沿用上一拍的 n；窗口 `l2_store_window` = 32 个 beat）。RTL 配置的表为 `1:0.05, 2:0.09, 4:0.20, 8:0.75, 16:0.97`，部分写换行再加 `l2_partial_store_switch` 0.2。之前的换行代价（`l2_store_switch`）置 0。
 
 同一组参数下 C++ 模型的误差：
 

@@ -1,10 +1,10 @@
 # 23 C++ 事件驱动周期级模型（hwacha-sim）
 
-代码位于 `cc/`。它参照 gem5 的组织方式重写了性能模型：事件队列驱动的模拟内核、SimObject/ClockedObject 对象模型、Port/Packet 时序协议与 retry 反压、逐拍仲裁的交叉开关与 L2 bank、带 JEDEC 时序约束与 FR-FCFS 调度的 DRAM 控制器。Hwacha 内部流水以每周期一个 tick 事件推进（与 gem5 CPU 模型相同），访存则完全走事件驱动的存储系统。输入格式（`kernels/*.S`）与参数文件（`configs/*.json`）与 Python 模型共用。
+代码位于 `hwacha-perf/`。它参照 gem5 的组织方式重写了性能模型：事件队列驱动的模拟内核、SimObject/ClockedObject 对象模型、Port/Packet 时序协议与 retry 反压、逐拍仲裁的交叉开关与 L2 bank、带 JEDEC 时序约束与 FR-FCFS 调度的 DRAM 控制器。Hwacha 内部流水以每周期一个 tick 事件推进（与 gem5 CPU 模型相同），访存则完全走事件驱动的存储系统。输入格式（`kernels/*.S`）与参数文件（`configs/*.json`）与 Python 模型共用。
 
 ## 1. 与 gem5 的对应关系
 
-| gem5 | hwacha-sim（`cc/src/`） |
+| gem5 | hwacha-sim（`hwacha-perf/src/`） |
 |---|---|
 | `EventQueue` / `Event` / `EventFunctionWrapper`，tick = 1 ps | `sim::EventQueue`、`sim::Event`、`sim::EventFunctionWrapper`，tick = 1 ps；按 (when, priority, seq) 排序，惰性 deschedule |
 | `SimObject`、`ClockedObject`（时钟域、`clockEdge`、`curCycle`） | `sim::SimObject`、`sim::ClockedObject`；核心 1 GHz，DRAM 用自己的 tCK |
@@ -35,7 +35,7 @@
 ## 3. 构建与使用
 
 ```bash
-cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja
+cd hwacha-perf && mkdir -p build && cd build && cmake -G Ninja .. && ninja
 ctest --output-on-failure            # memtest（存储系统）+ kernels（全部内核与关键性质）
 ./hwacha-sim run ../../kernels/daxpy.S --n 65536
 ./hwacha-sim run ../../kernels/dgemm_opt.S --lanes 4 --n 131072 --json

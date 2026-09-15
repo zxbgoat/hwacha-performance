@@ -22,7 +22,7 @@ def _sets(sets):
     return out
 
 def run_cc(kernel, n, cfg, sets=None):
-    exe = os.path.join(ROOT, 'cc', 'build', 'hwacha-sim')
+    exe = os.path.join(ROOT, 'hwacha-perf', 'build', 'hwacha-sim')
     r = subprocess.run([exe, 'run', kernel, '--n', str(n), '--config', cfg, '--quiet', '--json'] + _sets(sets), capture_output=True, text=True)
     try:
         return json.loads(r.stdout)['cycles']

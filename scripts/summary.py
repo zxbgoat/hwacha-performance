@@ -5,7 +5,7 @@
 """
 import argparse, glob, json, os, subprocess, sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-EXE = os.path.join(ROOT, 'cc', 'build', 'hwacha-sim')
+EXE = os.path.join(ROOT, 'hwacha-perf', 'build', 'hwacha-sim')
 
 def run(kernel, cfg, n, lanes):
     r = subprocess.run([EXE, 'run', kernel, '--config', cfg, '--n', str(n), '--lanes', str(lanes), '--quiet', '--json'], capture_output=True, text=True)

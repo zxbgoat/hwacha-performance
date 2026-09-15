@@ -1,6 +1,6 @@
 # 22 性能模型的抽象层次、内核文件格式与输出指标
 
-本文说明性能模型的抽象层次、建模的微架构机制、输入（内核文件与踪迹）格式、输出指标与已知局限；实现细节见 `23-cpp-model.md`（C++，`cc/`）。这些抽象最初在一个 Python 实现里建立，C++ 模型沿用了同一套内核描述、配置键与统计口径；Python 实现自 v0.0.7 起删除（第三轮 RTL 校准之后它已与 C++ 分叉，不再维护）。
+本文说明性能模型的抽象层次、建模的微架构机制、输入（内核文件与踪迹）格式、输出指标与已知局限；实现细节见 `23-cpp-model.md`（C++，`hwacha-perf/`）。这些抽象最初在一个 Python 实现里建立，C++ 模型沿用了同一套内核描述、配置键与统计口径；Python 实现自 v0.0.7 起删除（第三轮 RTL 校准之后它已与 C++ 分叉，不再维护）。
 
 ## 1. 模型定位
 
@@ -31,7 +31,7 @@
 
 ## 3. 参数
 
-参数（C++ 里的 `HwachaParams`，见 `cc/src/hwacha.hh`；存储系统参数在 `cc/src/main.cc` 读取）的键名与 `docs/18-source-map.md` 中的 Chisel 参数一一对应，可用 `--set key=val`、`--set mem.key=val` 或 JSON 配置覆盖。`configs/` 下提供：
+参数（C++ 里的 `HwachaParams`，见 `hwacha-perf/src/hwacha.hh`；存储系统参数在 `hwacha-perf/src/main.cc` 读取）的键名与 `docs/18-source-map.md` 中的 Chisel 参数一一对应，可用 `--set key=val`、`--set mem.key=val` 或 JSON 配置覆盖。`configs/` 下提供：
 
 | 文件 | 含义 |
 |---|---|

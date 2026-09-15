@@ -5,7 +5,7 @@
 """
 import argparse, json, os, subprocess, sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-EXE = os.path.join(ROOT, 'cc', 'build', 'hwacha-sim')
+EXE = os.path.join(ROOT, 'hwacha-perf', 'build', 'hwacha-sim')
 
 def run(kernel, cfg, n, sets):
     cmd = [EXE, 'run', os.path.join(ROOT, 'kernels', kernel + '.S'), '--config', cfg, '--n', str(n), '--quiet', '--json']

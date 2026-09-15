@@ -12,7 +12,7 @@ NM = os.path.join(os.path.expanduser(os.environ.get('HWACHA_ROOT', '~/hwacha-com
 _WT = re.compile(r'^H: WT pc=([0-9a-f]+) inst=([0-9a-f]+) next=([0-9a-f]+)')
 
 def count_blocks(path, lo, hi):
-    """踪迹里起始 pc 落在 [lo, hi) 的 vf 块数（与 cc/src/trace.cc 的切块规则一致：pc 不连续即新块，vstop 结束块）"""
+    """踪迹里起始 pc 落在 [lo, hi) 的 vf 块数（与 hwacha-perf/src/trace.cc 的切块规则一致：pc 不连续即新块，vstop 结束块）"""
     n = 0; expect = None; start = None
     for line in open(path, errors='replace'):
         if not line.startswith('H: WT '):
@@ -87,7 +87,7 @@ def main():
         b0, b1 = a.rep * k, (a.rep + 1) * k
         kp = os.path.join(ROOT, 'kernels', 'rodinia', name + '.S')
         common = [kp, '--config', a.config, '--trace', trace, '--trace-range', f'{lo:x}:{hi:x}', '--trace-blocks', f'{b0}:{b1}', '--json']
-        c = run_model([os.path.join(ROOT, 'cc', 'build', 'hwacha-sim'), 'run'] + common + ['--quiet'])
+        c = run_model([os.path.join(ROOT, 'hwacha-perf', 'build', 'hwacha-sim'), 'run'] + common + ['--quiet'])
         res = rtl_results(os.path.join(ROOT, 'rtl', 'results', f'rodinia-{prog}.log'))
         cold, warm = res.get(tag), res.get(tag + '_warm2')
         def e(v): return f"{100*(v-warm)/warm:+.1f}%" if (v and warm) else 'n/a'

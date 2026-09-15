@@ -1,6 +1,6 @@
 # 25. 设计空间研究（用 C++ 模型）
 
-用 `cc/build/hwacha-sim` 在论文配置（`configs/paper-28nm.json`：1 lane、VRU 开、4 bank × 256 KB L2、双通道 DRAM、1 GHz）上做的几组参数扫描，N = 65536。数据由 `python3 scripts/design_space.py` 生成，可重现；表中括号内是相对第一列的比值。这些结果反映的是**模型**在 RTL 校准范围之外的外推（论文配置的 VRU、多 bank L2 与真实 DRAM 时序都没有对应的开源 RTL 可校验，见 `24-rtl-calibration.md` 第 9 节）。
+用 `hwacha-perf/build/hwacha-sim` 在论文配置（`configs/paper-28nm.json`：1 lane、VRU 开、4 bank × 256 KB L2、双通道 DRAM、1 GHz）上做的几组参数扫描，N = 65536。数据由 `python3 scripts/design_space.py` 生成，可重现；表中括号内是相对第一列的比值。这些结果反映的是**模型**在 RTL 校准范围之外的外推（论文配置的 VRU、多 bank L2 与真实 DRAM 时序都没有对应的开源 RTL 可校验，见 `24-rtl-calibration.md` 第 9 节）。
 
 ## 1. 序列器条目数（`n_seq_entries`）
 

@@ -3,7 +3,7 @@
 UC Berkeley Hwacha 解耦向量取指加速器的文档集与性能模型。
 
 - `docs/`：设计思想、编程模型、ISA、整体架构、微架构与各子模块文档（从 `docs/README.md` 进入）
-- `cc/`：C++ 的 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；抽象层次与内核文件格式见 `docs/22-performance-model.md`，实现见 `docs/23-cpp-model.md`）。早期的 Python 模型已在 v0.0.7 删除
+- `hwacha-perf/`：C++ 的 gem5 风格事件驱动周期级模型（事件队列、Port/Packet、逐拍仲裁的 L2、JEDEC 时序的 DRAM 控制器；抽象层次与内核文件格式见 `docs/22-performance-model.md`，实现见 `docs/23-cpp-model.md`）。早期的 Python 模型已在 v0.0.7 删除
 - `kernels/`：用 Hwacha 汇编写的示例内核（vvadd、saxpy、daxpy、csaxpy、dgemm 分块、模板滤波、gather、FMA 峰值）
 - `configs/`：论文评估配置、开源主线配置、混合精度配置、理想内存配置、RTL 校准配置
 - `rtl/`：在 Chipyard 1.11 `HwachaRocketConfig`（1 lane）、`HwachaL2RocketConfig`（2 lane）、`HwachaL4/L8/L16RocketConfig`（4/8/16 lane）的 Verilator RTL 上运行同一批内核的基准、微基准、探针与 Rodinia 程序；`rtl/results/` 保存了全部 RTL 计时与踪迹日志，`rtl/patches/` 是复现所需的上游补丁；`make calibrate` 一键回归（说明见 `docs/24-rtl-calibration.md`）
@@ -13,8 +13,8 @@ UC Berkeley Hwacha 解耦向量取指加速器的文档集与性能模型。
 ## 快速开始
 
 ```bash
-cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest && cd ../..
-S=cc/build/hwacha-sim
+cd hwacha-perf && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest && cd ../..
+S=hwacha-perf/build/hwacha-sim
 $S run kernels/daxpy.S --n 65536                          # 论文配置（默认）
 $S run kernels/dgemm_opt.S --lanes 4 --n 131072 --json
 $S run kernels/saxpy.S --config configs/paper-28nm-mxp.json
@@ -56,7 +56,7 @@ saxpy_vf:
 
 ```bash
 git clone <本仓库> hwacha-performance && cd hwacha-performance
-cd cc && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest --output-on-failure && cd ../..
+cd hwacha-perf && mkdir -p build && cd build && cmake -G Ninja .. && ninja && ctest --output-on-failure && cd ../..
 ```
 
 `ctest` 里的 8 个测试就是文档里的校准表：`memtest`/`kernels`（模型自检）、`calibrate`（1 lane：`rtl/results/rtl-n4096-aligned.log` + `micro-n4096-aligned2.log`）、`calibrate-l2`、`calibrate-l4`、`calibrate-l8`、`calibrate-l16`、`calibrate-rodinia`（踪迹驱动的 Rodinia 内核）。单独看表用比较脚本：
