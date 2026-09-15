@@ -2,3 +2,32 @@
 make spike N=4096 | grep -a "VERIF"
 ALL VERIFIED
 make rtl N=4096 LANES=1 > /dev/null
+make micro-rtl N=4096 LANES=1 > /dev/null
+python3 ../scripts/compare_rtl.py --logs results/rtl-n4096.log,results/micro-n4096.log --config ../configs/rtl-hwacha-rocket.json --max-err 12
+kernel              N  RTL cold RTL steady      C++     err
+csaxpy           4096      4985       3859     3803   -1.5%
+daxpy            4096      7327       6505     6296   -3.2%
+dgemm_opt        4096      8538       8402     8253   -1.8%
+fma_peak         4096     12311      12309    12303   -0.0%
+gather           4096     10087       8543     8443   -1.2%
+micro_alu        4096      8255       8249     8204   -0.5%
+micro_copy       4096      4546       4177     4244   +1.6%
+micro_empty      4096       644        573      521   -9.1%
+micro_fdiv_d     4096     12359      12363    12311   -0.4%
+micro_fdiv_s     4096     12366      12365    12309   -0.5%
+micro_fma_dep    4096      8223       8223     8207   -0.2%
+micro_fsqrt_s    4096     20594      20535    20501   -0.2%
+micro_inplace    4096      4539       4382     4241   -3.2%
+micro_ld4st1     4096     16141      11096    10693   -3.6%
+micro_ldst       4096      4600       4177     4244   +1.6%
+micro_load       4096      2630       2119     2097   -1.0%
+micro_load2      4096      4183       4177     4154   -0.6%
+micro_lstride    4096      4219       4196     4146   -1.2%
+micro_sstride    4096      4201       4199     4441   +5.8%
+micro_st2        4096      4912       4184     4338   +3.7%
+micro_stld       4096      4181       4184     4248   +1.5%
+micro_store      4096      2979       2117     2187   +3.3%
+saxpy            4096      4262       3255     3289   +1.0%
+sfilter          4096      5798       5264     5627   +6.9%
+vvadd            4096      7678       6552     6296   -3.9%
+C++ mean |err| = 2.3%, max = 9.1%

@@ -1,0 +1,10 @@
+kmeans scalar: 1355486 cycles, 1323.71 cyc/elem
+kmeans_swap hwacha-cc: 20744 cycles, 20.25 cyc/elem
+kmeans_swap hwacha-cc_warm: 19026 cycles, 18.58 cyc/elem
+kmeans_swap hwacha-cc_warm2: 18929 cycles, 18.48 cyc/elem
+kmeans_swap PASS (0 mismatches)
+kmeans_c hwacha-cc: 45353 cycles, 44.29 cyc/elem
+kmeans_c hwacha-cc_warm: 44539 cycles, 43.49 cyc/elem
+kmeans_c hwacha-cc_warm2: 44538 cycles, 43.49 cyc/elem
+kmeans_c PASS (0 mismatches / 1024)
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL4RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish
