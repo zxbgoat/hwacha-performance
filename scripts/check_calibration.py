@@ -16,7 +16,7 @@ LOGS = {   # lane 数 -> (配置, 基准日志, 微基准日志)
     8: ('rtl-hwacha-rocket-l8.json',  'rtl-n4096-l8.log',       'micro-n4096-l8.log'),
     16: ('rtl-hwacha-rocket-l16.json', 'rtl-n4096-l16.log',      'micro-n4096-l16.log'),
 }
-TRACE_SUITES = [('rodinia', 1), ('hcc', 1)]
+TRACE_SUITES = [('rodinia', 1), ('hcc', 1), ('rodinia', 4), ('hcc', 4)]
 SKIP_ERR = {'micro_empty'}   # 只有几十到几百拍，不按 RTL 误差阈值检查（仍检查漂移）
 
 def run(cmd):

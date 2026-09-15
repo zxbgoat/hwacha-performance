@@ -608,5 +608,55 @@
   "rtl": 1688,
   "model": 1594,
   "err": -5.568720379146919
+ },
+ "rodinia/4L/nn": {
+  "rtl": 5718,
+  "model": 5250,
+  "err": -8.184679958027282
+ },
+ "rodinia/4L/kmeans_swap": {
+  "rtl": 18929,
+  "model": 18425,
+  "err": -2.6625812245760474
+ },
+ "rodinia/4L/kmeans_c": {
+  "rtl": 44538,
+  "model": 50209,
+  "err": 12.732947146257128
+ },
+ "rodinia/4L/pgain": {
+  "rtl": 12238,
+  "model": 12354,
+  "err": 0.9478672985781991
+ },
+ "rodinia/4L/pathfinder": {
+  "rtl": 70886,
+  "model": 66606,
+  "err": -6.037863611996727
+ },
+ "hcc/4L/hcc_saxpy": {
+  "rtl": 1305,
+  "model": 1235,
+  "err": -5.363984674329502
+ },
+ "hcc/4L/hcc_clamp": {
+  "rtl": 928,
+  "model": 891,
+  "err": -3.9870689655172415
+ },
+ "hcc/4L/hcc_divloop": {
+  "rtl": 4812,
+  "model": 5608,
+  "err": 16.54197838736492
+ },
+ "hcc/4L/hcc_stencil": {
+  "rtl": 1569,
+  "model": 1494,
+  "err": -4.780114722753346
+ },
+ "hcc/4L/hcc_gather": {
+  "rtl": 1960,
+  "model": 1876,
+  "err": -4.285714285714286
  }
 }

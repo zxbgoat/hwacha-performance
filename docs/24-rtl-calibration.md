@@ -30,7 +30,7 @@
 | 完整基准（8 个内核）平均 / 最大 | 2.4% / 6.9% | 2.2% / 4.3% | 1.4% / 4.4% | 2.0% / 4.3% | 1.0% / 3.7% |
 | 微基准（不含 micro_empty）平均 / 最大 | 2.1% / 6.2% | 1.9% / 3.6% | 1.1% / 4.9% | 1.8% / 11.0% | 2.2% / 11.2% |
 | hwacha-cc bench 内核（5 个，踪迹驱动）平均 / 最大 | 6.8% / 18.3%（clamp） | — | 7.0% / 16.5%（divloop） | — | — |
-| Rodinia 内核（5 个，踪迹驱动）平均 / 最大 | 6.3% / 9.6%（pathfinder） | — | 见 §10.12 | — | — |
+| Rodinia 内核（5 个，踪迹驱动）平均 / 最大 | 6.3% / 9.6%（pathfinder） | — | 6.1% / 12.7%（kmeans_c） | — | — |
 
 **已知偏差**：谓词密集的块（clamp −18%、pathfinder −10%、pgain −9%、nn −9%）模型偏乐观，谓词逻辑/谓词化访存的调度细节尚未还原；跨步 4 B store 在 8/16 lane 下 +11%；micro_empty（几十到几百拍的空块）多 lane 下偏快，真实内核里不到 1%；1 lane 下 store 有 1.03–1.16 拍/beat 的布局波动无法复现。
 
@@ -463,7 +463,7 @@ micro_empty 在 8/16 lane 下模型偏快 40%–59%（RTL 122 / 100 拍 vs 模�
 
 **冷启动**（`mem.cold_start`）：把内核数组列表末尾 16 KB 当作标量核刚写、仍在 L1D 里的脏行，第一次向量访问它们时 L2 探测 L1D，每行多 4 拍并占住 bank。与 RTL 第一次计时比较：1 lane 平均 4.5%（sfilter +13.7% 最差，vvadd/daxpy/saxpy/csaxpy 在 −6% 内），4 lane 与 8 lane 各内核在 ±7% 内。这是一个描述性开关，不影响稳态比较。
 
-**多 lane 的踪迹驱动验证**：hwacha-cc bench 内核在 4 lane RTL（`rtl/results/hcc-n1024-l4.log`）上：saxpy 1305 / 模型 −5.4%，clamp 928 / −4.0%，divloop 4812 / +16.5%，stencil 1569 / −4.8%，gather 1960 / −4.3%。踪迹模式在多 lane 下按 lane 分配元素与活跃掩码的路径可用；divloop 的 +16.5% 来自每次迭代约 20 拍的块内标量指令延迟在 strip 变短后不再被隐藏。Rodinia 的 4 lane 结果见 `rodinia-*-l4.log`（__RODINIA_L4__）。
+**多 lane 的踪迹驱动验证**：hwacha-cc bench 内核在 4 lane RTL（`rtl/results/hcc-n1024-l4.log`）上：saxpy 1305 / 模型 −5.4%，clamp 928 / −4.0%，divloop 4812 / +16.5%，stencil 1569 / −4.8%，gather 1960 / −4.3%。踪迹模式在多 lane 下按 lane 分配元素与活跃掩码的路径可用；divloop 的 +16.5% 来自每次迭代约 20 拍的块内标量指令延迟在 strip 变短后不再被隐藏。Rodinia 内核在 4 lane RTL 上（`rodinia-*-l4.log`，RTL 稳态 / 模型误差）：nn 5718 / −8.2%、kmeans_swap 18929 / −2.7%、kmeans_c 44538 / +12.7%、pgain 12238 / +0.9%、pathfinder 70886 / −6.0%；平均 6.1%，最大 12.7%。除 kmeans_c（1 lane +0.5%，4 lane +12.7%：7 个入口块、每块很短，多 lane 每块固定开销 `vf_lane_sync_cycles` 对它偏大）外，偏差方向与大小和 1 lane 一致，多 lane 的踪迹分配没有引入新的误差。
 
 **工程整理**：`mem.cc` 删掉三个没拟合上的机械 store 模型，store 代价集中在 `L2Bank::storeBeatCost`；`rtl/results` 的踪迹与 TileLink 日志改为 gzip（101 MB → 10 MB），脚本与 C++ 都透明读取；`scripts/check_calibration.py` 按每个内核记录模型周期数基线（`hwacha-perf/tests/calibration_baseline.json`），ctest 里的 `calibrate` 检查 RTL 误差 ≤ 20% 且相对基线漂移 ≤ 2%；`make calibrate LANES=1` 端到端重跑过一次；16 lane 仿真器用 `VERILATOR_THREADS=4` 重建（__L16_THREADS__）；新增 `HwachaNoVRURocketConfig`、`HwachaL2B2RocketConfig`（__VRU_L2B2__）。
 
