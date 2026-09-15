@@ -55,5 +55,5 @@
 - [21-glossary.md](21-glossary.md) — 术语与缩写表
 - [22-performance-model.md](22-performance-model.md) — 性能模型的抽象层次、建模机制、内核文件格式、输出指标与局限
 - [23-cpp-model.md](23-cpp-model.md) — C++ 事件驱动周期级模型（gem5 风格）：框架、精度提升、参数附录
-- [24-rtl-calibration.md](24-rtl-calibration.md) — 用 Chipyard/Verilator RTL 校准模型：测量程序、探针测得的微架构事实、修正与残余误差
+- [24-rtl-calibration.md](24-rtl-calibration.md) — 用 Chipyard/Verilator RTL 校准模型（§0 是当前状态总览）：测量程序、探针与跟踪测得的微架构事实、四轮修正与残余误差
 - [25-design-space.md](25-design-space.md) — 用校准后的模型做的设计空间研究：序列器/VMT 条目数、多 lane 的 L2 端口、VRU、lane 数

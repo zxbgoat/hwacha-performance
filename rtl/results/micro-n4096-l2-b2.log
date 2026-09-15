@@ -1,0 +1,37 @@
+N=4096
+RESULT micro_empty 386 cycles 4096 elems
+RESULT micro_empty_warm 314 cycles 4096 elems
+RESULT micro_load 1777 cycles 4096 elems
+RESULT micro_load_warm 1085 cycles 4096 elems
+RESULT micro_store 1917 cycles 4096 elems
+RESULT micro_store_warm 1251 cycles 4096 elems
+RESULT micro_copy 2294 cycles 4096 elems
+RESULT micro_copy_warm 2283 cycles 4096 elems
+RESULT micro_load2 2119 cycles 4096 elems
+RESULT micro_load2_warm 2116 cycles 4096 elems
+RESULT micro_ldst 2280 cycles 4096 elems
+RESULT micro_ldst_warm 2280 cycles 4096 elems
+RESULT micro_stld 2291 cycles 4096 elems
+RESULT micro_stld_warm 2288 cycles 4096 elems
+RESULT micro_inplace 2387 cycles 4096 elems
+RESULT micro_inplace_warm 2279 cycles 4096 elems
+RESULT micro_alu 4157 cycles 4096 elems
+RESULT micro_alu_warm 4150 cycles 4096 elems
+RESULT micro_fma_dep 4124 cycles 4096 elems
+RESULT micro_fma_dep_warm 4124 cycles 4096 elems
+RESULT micro_fsqrt_s 10354 cycles 4096 elems
+RESULT micro_fsqrt_s_warm 10294 cycles 4096 elems
+RESULT micro_fdiv_s 6222 cycles 4096 elems
+RESULT micro_fdiv_s_warm 6219 cycles 4096 elems
+RESULT micro_fdiv_d 6215 cycles 4096 elems
+RESULT micro_fdiv_d_warm 6220 cycles 4096 elems
+RESULT micro_lstride 2471 cycles 4096 elems
+RESULT micro_lstride_warm 2468 cycles 4096 elems
+RESULT micro_sstride 2633 cycles 4096 elems
+RESULT micro_sstride_warm 2631 cycles 4096 elems
+RESULT micro_st2 2481 cycles 4096 elems
+RESULT micro_st2_warm 2463 cycles 4096 elems
+RESULT micro_ld4st1 11691 cycles 4096 elems
+RESULT micro_ld4st1_warm 5484 cycles 4096 elems
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL2B2RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

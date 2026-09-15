@@ -30,7 +30,7 @@
 
 结论：VMT（每 lane 在途 beat 上限）是 Little 定律的直接体现——16 项只能覆盖 16 × 16 B / 110 拍 ≈ 2.3 B/拍，流式内核立刻变成延迟受限（vvadd 慢 3.4×）；32 项刚好够 110 拍延迟，64 项对 220 拍延迟也够。因为 VRU 把需求访问变成 L2 命中（延迟 24 拍而不是 110），主存延迟翻倍对 VMT 64 完全没有影响：VRU 让 VMT 的压力从"覆盖主存延迟"降到"覆盖 L2 延迟"。gather（索引访存，每元素一个请求）对 VMT 最敏感。
 
-## 3. 多 lane 的 L2 端口：一个 bank（Chipyard RTL 集成方式）vs 每 lane 一个 bank（论文方式）
+## 3. 多 lane 的 L2 端口（RTL 部分验证：2 lane + 2 bank 下 64 位内核确实翻倍，但 32 位内核因 lane 锁步只快 16%–23%，模型高估，见 `24-rtl-calibration.md` §10.13）：一个 bank（Chipyard RTL 集成方式）vs 每 lane 一个 bank（论文方式）
 
 | kernel | 1 lane / 1 bank | 2 lane / 1 bank | 2 lane / 2 bank | 4 lane / 1 bank | 4 lane / 4 bank |
 |---|---|---|---|---|---|
@@ -43,7 +43,7 @@
 
 结论：RTL 校准（`24-rtl-calibration.md` 8.6 节）证实 Chipyard 集成的 Hwacha 所有 lane 共用一条 128 位 TileLink 路径进入单个 InclusiveCache bank，每拍只接受一个请求，所以 2 lane 的访存吞吐与 1 lane 相同。模型在论文配置下给出同样的结论：只加 lane 不加 L2 bank，访存受限的内核完全不加速（双精度流式内核甚至因为两条 lane 的流交错、DRAM 行局部性变差而慢 20%），只有 dgemm 这种计算受限的内核受益；每 lane 配一个 bank（论文图 8.2 的做法）后单精度流式内核接近线性加速，双精度流式内核则被 DRAM 带宽卡住（0.77×）。多 lane 设计必须同时扩展 L2 端口数。
 
-## 4. VRU（向量运行前预取）
+## 4. VRU（向量运行前预取；开源 RTL 的 SimDRAM 无延迟，无法验证，见 `24-rtl-calibration.md` §10.13）
 
 | kernel | VRU off | VRU on | VRU off, lat 220 | VRU on, lat 220 |
 |---|---|---|---|---|

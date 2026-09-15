@@ -1,0 +1,11 @@
+PROBE load_warm 2513
+PROBE load_warm 2137
+PROBE load_from_dram 2103
+PROBE load_warm 2127
+PROBE load_from_dram_1strip 69
+PROBE load_from_dram_1strip 44
+PROBE load_from_dram_1strip 49
+PROBE store_to_dram 3100
+PROBE store_warm 2252
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaNoVRURocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

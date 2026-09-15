@@ -123,7 +123,10 @@ git -C generators/rocket-chip-inclusive-cache apply $PERF/rtl/patches/chipyard-i
 git -C generators/rocket-chip apply $PERF/rtl/patches/chipyard-rocketchip-rocc-fpu.patch
 cp $PERF/rtl/patches/HwachaLaneConfigs.scala generators/chipyard/src/main/scala/config/
 cd sims/verilator
-for c in HwachaRocketConfig HwachaL2RocketConfig HwachaL4RocketConfig HwachaL8RocketConfig HwachaL16RocketConfig; do make CONFIG=$c SIM_OPT_CXXFLAGS=-O1 -j4; done
+for c in HwachaRocketConfig HwachaL2RocketConfig HwachaL4RocketConfig HwachaL8RocketConfig; do make CONFIG=$c SIM_OPT_CXXFLAGS=-O1 -j4; done
+make CONFIG=HwachaL16RocketConfig SIM_OPT_CXXFLAGS=-O1 VERILATOR_THREADS=4 -j12   # 16 lane 太大，单线程仿真每周期约 5 倍慢；4 线程约快 2–3 倍（构建 1 小时）
+make CONFIG=HwachaNoVRURocketConfig SIM_OPT_CXXFLAGS=-O1 -j4   # 可选：无 VRU 与 2 bank L2（docs/24 §10.13）
+make CONFIG=HwachaL2B2RocketConfig SIM_OPT_CXXFLAGS=-O1 -j4
 ```
 
 （内存小于 16 GB 时用 `-j2` 并 `setsid nohup` 分离；第一次全量构建约 1 小时，之后每个配置增量约 5–15 分钟。）仿真器在 `sims/verilator/simulator-chipyard.harness-<Config>`，约 20k 周期/秒；同时跑的仿真不要超过 3–4 个，Verilator 多线程在超载时会因自旋等待慢 10 倍以上。

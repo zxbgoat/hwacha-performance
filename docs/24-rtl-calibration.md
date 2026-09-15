@@ -467,10 +467,39 @@ micro_empty 在 8/16 lane 下模型偏快 40%–59%（RTL 122 / 100 拍 vs 模�
 
 **工程整理**：`mem.cc` 删掉三个没拟合上的机械 store 模型，store 代价集中在 `L2Bank::storeBeatCost`；`rtl/results` 的踪迹与 TileLink 日志改为 gzip（101 MB → 10 MB），脚本与 C++ 都透明读取；`scripts/check_calibration.py` 按每个内核记录模型周期数基线（`hwacha-perf/tests/calibration_baseline.json`），ctest 里的 `calibrate` 检查 RTL 误差 ≤ 20% 且相对基线漂移 ≤ 2%；`make calibrate LANES=1` 端到端重跑过一次；16 lane 仿真器用 `VERILATOR_THREADS=4` 重建（__L16_THREADS__）；新增 `HwachaNoVRURocketConfig`、`HwachaL2B2RocketConfig`（__VRU_L2B2__）。
 
+### 10.13 VRU 与 2 bank L2 的 RTL 对照（`HwachaNoVRURocketConfig`、`HwachaL2B2RocketConfig`）
+
+**VRU**：`DefaultHwachaConfig` 里 `HwachaBuildVRU = true`，也就是说此前所有 RTL 计时都是 VRU 开着的。用 `WithHwachaNoVRU` 关掉后重跑 probe4（冲掉 L2 后的向量 load/store），两份日志（`probe4-vru.log`、`probe4-novru.log`）逐项完全相同：load_from_dram 2103、单 strip 44–69 拍、store_to_dram 3100。原因是 Chipyard 默认 harness 的 SimDRAM 几乎没有延迟（§8.3），预取无从获益。所以开源 RTL 上无法校验 VRU 的收益，`25-design-space.md` 第 4 节仍是模型外推；RTL 配置里 `build_vru=false` 与 RTL 的 VRU 开启在行为上等价（模型里 VRU 只在 L2 缺失时起作用，而校准都在 L2 命中态）。
+
+**2 bank L2**（`WithNBanks(2)`，2 lane，`rtl/results/*-l2-b2.log`，模型配置 `rtl-hwacha-rocket-l2b2.json`：`l2_banks` 2）：
+
+| kernel | 2 lane 1 bank RTL | 2 lane 2 bank RTL | 模型 | 误差 |
+|---|---|---|---|---|
+| micro_load | 2121 | 1085 | 1093 | +0.7% |
+| micro_load2 | 4181 | 2116 | 2126 | +0.5% |
+| micro_store | 2232 | 1251 | 1132 | −9.5% |
+| micro_copy / ldst / stld / inplace | 4246 / 4188 / 4192 / 4187 | 2283 / 2280 / 2288 / 2279 | 2165 / 2165 / 2169 / 2163 | −5% |
+| micro_st2 / ld4st1 | — | 2463 / 5484 | 2208 / 5373 | −10.4% / −2.0% |
+| micro_lstride / sstride | — | 2468 / 2631 | 2118 / 2259 | −14% |
+| micro_alu / fma_dep / fdiv_d | 4155 / 4131 / — | 4150 / 4124 / 6220 | 4128 / 4131 / 6187 | ±0.5% |
+
+两个 bank 让 2 lane 的 load 吞吐翻倍（每拍 2 beat，两条 lane 各走一个 bank——bank 按 64 B 行交错，lane 也按 64 B 行交错，恰好一一对应），证实了 §10.1 的结论：多 lane 访存的瓶颈就是单个 L2 bank 每拍一个请求，而不是 RoCC 路径。模型对 load 完全命中（<1%），对 store 类偏乐观 5%–14%：并发行数查表（§10.10）是按单 bank 拟合的，两个 bank 各自看到的并发行数减半、但每个 bank 的 store 通路代价没有相应变化；跨步访存偏乐观 14% 说明每元素一个请求时两个 bank 的交错不再与 lane 一一对应。完整基准（`rtl-n4096-l2-b2.log`）：
+
+| kernel | 2 lane 1 bank RTL | 2 lane 2 bank RTL | 模型 | 误差 |
+|---|---|---|---|---|
+| vvadd / daxpy（64 位） | 6260 / 6645 | 3331 / 3334 | 3195 | −4.1% / −4.2% |
+| saxpy / csaxpy / sfilter（32 位） | 3335 / 3934 / 5429 | 2812 / 3410 / 4156 | 1684 / 2058 / 2955 | −40% / −40% / −29% |
+| gather | 8766 | 7150 | 5155 | −28% |
+| dgemm_opt / fma_peak | 4776 / 6165 | 4306 / 6165 | 4177 / 6179 | −3.0% / +0.2% |
+
+64 位内核如预期翻倍且模型命中；32 位内核 RTL 只快 16%–23%，模型却给出 2 倍。原因是 lane 间的元素交错粒度：RTL 每条 lane 一次拿 `lstrip` = 8 个元素（`rocc-unit.scala`，非混合精度时与精度无关），64 位元素时正好是一个 64 B 行、两条 lane 各走一个 bank；32 位元素时每 lane 只有 32 B，两条 lane 同时访问同一行、撞同一个 bank。模型的元素分配与 RTL 相同，但模型里两条 lane 会自然错开一个块（一条在第 k 行时另一条已到第 k+1 行）从而各占一个 bank，RTL 的两条 lane 严格锁步。gather 同理（索引访存的 bank 冲突是随机的，RTL 的锁步让冲突更集中）。要复现需要给模型加 lane 间锁步约束，未做；对单 bank（当前所有其他配置）没有影响。
+
+**16 lane 多线程仿真器**：`VERILATOR_THREADS=4` 重建（`-j12` 编译约 45 分钟）后微基准 474 s 跑完，单线程版约 1600 s，快 3.4 倍；周期数与单线程版有 1%–5% 的差别（micro_load 2118 vs 2140，micro_alu 566 vs 540）——Verilator 多线程下 DPI 的时序有细微不同，校准日志仍以单线程版为准。
+
 ## 11. 下一步
 
 1. 谓词密集的块（clamp −18%、pgain/pathfinder/nn −9%～−10%）：谓词逻辑单元与谓词化访存在 VIPU/VSU 路径上的调度细节，需要 vpop 密集的微基准或谓词单元的跟踪。
 2. store 通路仍是按并发行数查表的经验模型（10.10）；机械解释需要逐 beat 对比 8/16 lane 跟踪里 L2 的接受时刻或读 `BankedStore`。
 3. 跨步 4 B store 在 8/16 lane 下 +11%；1 lane 下 store 的布局波动（10.8）无法复现。
-4. VRU 与多 bank L2 的 RTL 校准（`HwachaNoVRURocketConfig`、`HwachaL2B2RocketConfig`）：仿真器构建完成后跑 probe4（冲掉 L2 后的向量 load）与 2 lane 基准，校验 `25-design-space.md` 里 VRU 与每 lane 一个 bank 的结论。
+4. VRU 在开源 RTL 上无法校验（SimDRAM 无延迟，§10.13）；要验证 `25-design-space.md` 的 VRU 结论需要换成有真实时序的 DRAM 模型（Chipyard 的 FASED/DRAMSim 后端）。多 bank L2 下模型缺少 lane 间锁步约束：32 位内核与索引访存偏乐观 28%–40%，store 类偏乐观 5%–14%（§10.13）；`25-design-space.md` 第 3 节中每 lane 一个 bank 的收益对 32 位内核被高估。
 5. Chisel 改动只在 `rtl/patches` 里；IBoxML 修复值得给 hwacha 上游提 issue/PR。
