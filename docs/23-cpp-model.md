@@ -90,9 +90,12 @@ ctest --output-on-failure            # memtest（存储系统）+ kernels（全�
 
 因此它的定位仍然是比较与趋势分析，只是相对 Python 模型把存储系统与数据搬运路径推进到了逐拍仲裁的精度；要成为严格意义上的周期精确模型，需要用 Verilator 运行 `ucb-bar/hwacha` 的 RTL 在同一批内核上校准上述各项。
 
-## 附：RTL 校准后新增的 C++ 专有参数
+## 附：RTL 校准后新增的参数
 
-- `mem.l2_store_beat_cycles` / `mem.l2_store_switch` / `mem.l2_partial_store_switch` / `mem.l2_store_conflict` / `mem.l2_store_window`：L2 bank 的 store 通路占用（`24-rtl-calibration.md` 10.9、10.10 节），所有 lane 共享；`l2_store_conflict` 是按并发行数查表的附加代价，是 1–16 lane 都能拟合的版本。`store_beat_cycles` 仍是 lane 端口侧的附加代价，RTL 配置里已回到 1.0。另有三个未启用的机械模型参数（`l2_hit_mshrs`/`l2_store_service`/…、`l2_rmw_merge_window`、`l2_store_banks`），保留供进一步研究。
+- `mem.l2_store_beat_cycles` / `mem.l2_store_switch` / `mem.l2_partial_store_switch` / `mem.l2_store_conflict` / `mem.l2_store_window`：L2 bank 的 store 通路占用（`24-rtl-calibration.md` 10.9、10.10 节），所有 lane 共享；`l2_store_conflict` 是按并发行数查表的附加代价（`mem.cc` `L2Bank::storeBeatCost`）。`store_beat_cycles` 仍是 lane 端口侧的附加代价，RTL 配置里为 1.0。
+- `seq_age_rule`（默认开）：RTL 序列器的 age 两级优先级——刚发过 strip 的条目在 nBanks 拍内让位给其他就绪条目，没有别的就绪条目时仍可发射；store 与索引访存只从各自最老的条目发射。`plu_port`（默认开）：vpop 等谓词逻辑走独立的 VIPU 发射口。`plu_occupancy`（默认 0）：谓词逻辑单元每 strip 占用，实验用。
+- `vf_lane_sync_cycles`：多 lane 时每个 vf 块的固定附加开销（RTL 配置 20）。
+- `mem.cold_start` / `mem.l1d_probe_cycles`（4）/ `mem.l1d_dirty_bytes`（16384）：冷启动描述——按内核数组列表顺序取最后 16 KB 当作标量核刚写、仍在 L1D 里的脏行，第一次向量访问它们时 L2 要探测 L1D（每行多 4 拍并占住 bank）。`compare_rtl.py --cold` 用它与 RTL 的第一次计时比较（24 节 10.12）。
 - `fsqrt_cycles_per_elem`：与 `fdiv_cycles_per_elem` 分开的开方吞吐（10.7 节）。
 - `--trace-base`：多入口 vf 块的踪迹映射（10.4 节）。
 - 跨步/索引访存每元素一个请求、VSDQ 按 16 B 数据量计条目（10.7 节）。

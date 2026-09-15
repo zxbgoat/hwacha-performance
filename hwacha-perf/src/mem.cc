@@ -139,6 +139,7 @@ L2Bank::L2Bank(std::string n, Tick period, P p)
 }
 
 void L2Bank::regStats() {
+    stProbes = &statScalar("probes", "冷启动时第一次访问需探测 L1D 的行数");
     stHits = &statScalar("hits"); stMisses = &statScalar("misses");
     stMshrHits = &statScalar("mshr_hits", "命中在途行");
     stPrefetches = &statScalar("prefetches"); stPrefetchUsed = &statScalar("prefetch_used", "被需求访问用到的预取行");
@@ -223,6 +224,11 @@ bool L2Bank::recvTimingReq(Packet *pkt) {
         return false;
     }
     Addr la = lineAddr(pkt->addr);
+    Cycles probe = 0;
+    if (!_probeLines.empty() && !pkt->isPrefetch()) {
+        auto pr = _probeLines.find(la);
+        if (pr != _probeLines.end()) { _probeLines.erase(pr); probe = _p.probeCycles; ++*stProbes; }
+    }
     if (pkt->isWrite() && pkt->cmd != Packet::PrefetchReq) {
         _storeCredit += storeBeatCost(la, pkt->size) - 1.0;
         Cycles extra = 0;
@@ -234,8 +240,8 @@ bool L2Bank::recvTimingReq(Packet *pkt) {
     Line *ln = lookup(la, setIdx);
     if (pkt->cmd == Packet::AtomicReq && !_p.supportsAtomics) sim::fatal("AMO to an L2 without atomic support");
     if (ln && ln->valid) {
-        Tick ready = clockEdge(_p.tagLatency + _p.dataLatency + (pkt->cmd == Packet::AtomicReq ? 1 : 0));
-        _tagBusyUntil = clockEdge(1);
+        Tick ready = clockEdge(_p.tagLatency + _p.dataLatency + probe + (pkt->cmd == Packet::AtomicReq ? 1 : 0));
+        _tagBusyUntil = clockEdge(1 + probe);
         ln->lastUsed = curTick();
         if (pkt->isPrefetch()) { pkt->makeResponse(); pkt->size = 1; queueResponse(pkt, clockEdge(_p.tagLatency)); return true; }
         if (ln->prefetched) { ++*stPrefetchUsed; ln->prefetched = false; }

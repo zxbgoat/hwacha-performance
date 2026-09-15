@@ -3,6 +3,7 @@
 #include "sim.hh"
 #include <deque>
 #include <map>
+#include <set>
 #include <list>
 #include <unordered_map>
 
@@ -154,6 +155,9 @@ public:
         //   分数代价按累计信用折算成整拍。三种机械模型（命中 MSHR 池、读-改-写合并窗口、子 bank 冲突排队）都拟合不了 1–16 lane，已删除。
         double storeCycles = 1.0, storeSwitch = 0.0, partialStoreSwitch = 0.0;
         std::vector<std::pair<unsigned, double>> storeConflict; unsigned storeWindow = 32;
+        // 冷启动：标量核刚写过、还留在 L1D 里的脏行第一次被向量访存触到时，L2 要先探测（Probe）L1D 拿回数据，
+        // 该请求多花 probeCycles 拍并占住 bank（RTL 实测每行约 4 拍）。markProbe() 标记这些行
+        unsigned probeCycles = 0;
     };
     L2Bank(std::string name, Tick period, P p);
     ResponsePort &cpuSide() { return _cpu; }
@@ -161,6 +165,7 @@ public:
     void regStats() override;
     // 功能性地把一行装入缓存（用于模拟运行前已被标量核写入而驻留 L2 的数据）
     void installLine(Addr addr, bool dirty);
+    void markProbe(Addr addr) { _probeLines.insert(lineAddr(addr)); }
 
 private:
     struct Line { bool valid = false, dirty = false, pending = false, prefetched = false; Addr tag = 0; Tick lastUsed = 0; };
@@ -206,6 +211,8 @@ private:
     bool _memBlocked = false;
     bool _needCpuRetry = false;
     Tick _tagBusyUntil = 0;
+    std::set<Addr> _probeLines;           // 第一次访问需探测 L1D 的行
+    sim::stats::Scalar *stProbes = nullptr;
     // store 通路状态
     Tick _storeBusyUntil = 0;             // store 通路忙到的时刻
     double _storeCredit = 0;              // 分数占用的累计信用

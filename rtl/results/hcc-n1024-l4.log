@@ -14,3 +14,11 @@ RESULT hand_clamp_warm2 950 cycles 1024 elems
 RESULT hcc_divloop 5214 cycles 1024 elems
 RESULT hcc_divloop_warm 4868 cycles 1024 elems
 RESULT hcc_divloop_warm2 4812 cycles 1024 elems
+RESULT hcc_stencil 1819 cycles 1024 elems
+RESULT hcc_stencil_warm 1631 cycles 1024 elems
+RESULT hcc_stencil_warm2 1569 cycles 1024 elems
+RESULT hcc_gather 2254 cycles 1024 elems
+RESULT hcc_gather_warm 2015 cycles 1024 elems
+RESULT hcc_gather_warm2 1960 cycles 1024 elems
+ALL VERIFIED
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL4RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

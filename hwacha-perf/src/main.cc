@@ -65,6 +65,7 @@ int main(int argc, char **argv) {
     lp.supportsAtomics = memP.getBool("l2_supports_amo", true);
     lp.storeCycles = memP.getDouble("l2_store_beat_cycles", 1.0);
     lp.storeSwitch = memP.getDouble("l2_store_switch", 0.0);
+    lp.probeCycles = (unsigned)memP.getInt("l1d_probe_cycles", 4);
     lp.partialStoreSwitch = memP.getDouble("l2_partial_store_switch", 0.0);
     {   // "1:0.05,2:0.09,4:0.2,8:0.75,16:0.97"
         std::string tbl = memP.getString("l2_store_conflict", "");
@@ -159,6 +160,28 @@ int main(int argc, char **argv) {
         }
     }
 
+    // 冷启动（mem.cold_start=true）：标量核初始化后仍留在 L1D 里的脏行（按内核数组列表顺序取最后 l1d_dirty_bytes 字节）
+    // 第一次被向量访存触到时要探测 L1D；对应 RTL 的第一次计时，而不是 warm2 稳态
+    if (memP.getBool("cold_start", false) && lp.probeCycles) {
+        uint64_t budget = (uint64_t)memP.getInt("l1d_dirty_bytes", 16384);
+        // 每个数组只算本次运行会用到的那一段（与 warm_l2 的规则相同），从列表末尾往前取
+        std::vector<std::pair<uint64_t, uint64_t>> used;   // (起始地址, 字节数)
+        for (auto &[name, arr] : kernel.arrays) {
+            uint64_t bytes = 0; bool referenced = false;
+            for (auto &[reg, d] : kernel.va) if (d.isPtr && d.array == name) {
+                referenced = true;
+                bytes = std::max<uint64_t>(bytes, (n + d.offsetElems + 16) * (uint64_t)arr.elem * std::max(1, d.strideElems));
+            }
+            if (!referenced) bytes = arr.nbytes();
+            used.emplace_back(arr.base, std::min<uint64_t>(bytes, arr.nbytes()));
+        }
+        for (auto it = used.rbegin(); it != used.rend() && budget; ++it) {
+            uint64_t take = std::min<uint64_t>(budget, it->second);
+            for (uint64_t a = it->first + it->second - take; a < it->first + it->second; a += lineBytes)
+                l2s[xbar->route(a)]->markProbe(a);
+            budget -= take;
+        }
+    }
     for (auto *o : SimObject::all()) o->startup();
     auto &eq = mainEventQueue();
     while (!hwacha->done()) {
