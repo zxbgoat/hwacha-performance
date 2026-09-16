@@ -6,7 +6,7 @@
 #define N 4096
 #endif
 #define VCFG(v64, v32, v16, vp) (((v64) & 0x1ff) | (((vp) & 0x1f) << 9) | (((v32) & 0x1ff) << 14) | (((v16) & 0x1ff) << 23))
-extern char micro_load_vf[], micro_store_vf[], micro_copy_vf[], micro_load2_vf[], micro_alu_vf[], micro_fma_dep_vf[], micro_empty_vf[], micro_ldst_vf[], micro_stld_vf[], micro_inplace_vf[], micro_fsqrt_s_vf[], micro_fdiv_s_vf[], micro_fdiv_d_vf[], micro_lstride_vf[], micro_sstride_vf[], micro_st2_vf[], micro_ld4st1_vf[], micro_pcmp_vf[], micro_pcmp_use_vf[], micro_pcmp_2use_vf[], micro_vpop_vf[], micro_vpop_indep_vf[], micro_pmix_vf[], micro_fma2_indep_vf[], micro_fma2_waw_vf[], micro_pcmp_2diff_vf[], micro_pfma2_same_vf[];
+extern char micro_load_vf[], micro_store_vf[], micro_copy_vf[], micro_load2_vf[], micro_alu_vf[], micro_fma_dep_vf[], micro_empty_vf[], micro_ldst_vf[], micro_stld_vf[], micro_inplace_vf[], micro_fsqrt_s_vf[], micro_fdiv_s_vf[], micro_fdiv_d_vf[], micro_lstride_vf[], micro_sstride_vf[], micro_st2_vf[], micro_ld4st1_vf[], micro_pcmp_vf[], micro_pcmp_use_vf[], micro_pcmp_2use_vf[], micro_vpop_vf[], micro_vpop_indep_vf[], micro_pmix_vf[], micro_fma2_indep_vf[], micro_fma2_waw_vf[], micro_pcmp_2diff_vf[], micro_pfma2_same_vf[], micro_pcmp_int_vf[], micro_pcmp_int2_vf[], micro_pcmp_fp_int_vf[], micro_vpop_pld_vf[], micro_vpop_pst_vf[], micro_pst_mix_vf[], micro_vpop_pfma_vf[], micro_pcmp_br_vf[];
 static inline unsigned long cycles_now(void) { unsigned long c; asm volatile("rdcycle %0" : "=r"(c)); return c; }
 #define VSETCFG(c)      asm volatile("vsetcfg %0" :: "r"((unsigned long)(c)))
 #define VSETVL(vl, n)   asm volatile("vsetvl %0, %1" : "=r"(vl) : "r"(n))
@@ -33,6 +33,11 @@ static double zd[N + 16] __attribute__((aligned(4096))), wd[N + 16] __attribute_
 static void run4(char *blk, long n, unsigned cfg, double *p0, double *p1, double *p2, double *p3) {
   VSETCFG(cfg); VMCS(vs1, 0x3ff0000000000000ull);
   while (n > 0) { long vl; VSETVL(vl, n); VMCA(va0, p0); VMCA(va1, p1); VMCA(va2, p2); VMCA(va3, p3); VF(blk); p0 += vl; p1 += vl; p2 += vl; p3 += vl; n -= vl; }
+  FENCE();
+}
+static void run2v(char *blk, long n, unsigned cfg, unsigned long vs1, void *p0, void *p1, int esz) {
+  VSETCFG(cfg); VMCS(vs1, vs1); VMCS(vs2, 0);
+  while (n > 0) { long vl; VSETVL(vl, n); if (p0) VMCA(va0, p0); if (p1) VMCA(va1, p1); VF(blk); if (p0) p0 = (char *)p0 + vl * esz; if (p1) p1 = (char *)p1 + vl * esz; n -= vl; }
   FENCE();
 }
 static void run_stride(char *blk, long n, unsigned cfg, void *p0, long stride) {
@@ -70,6 +75,14 @@ int main(void) {
   TIME("micro_fma2_waw",   run1v(micro_fma2_waw_vf,   N, VCFG(0, 2, 0, 1), 0x4000000040000000ull));
   TIME("micro_pcmp_2diff", run1v(micro_pcmp_2diff_vf, N, VCFG(0, 3, 0, 2), 0x4000000040000000ull));
   TIME("micro_pfma2_same", run1v(micro_pfma2_same_vf, N, VCFG(0, 2, 0, 2), 0x4000000040000000ull));
+  TIME("micro_pcmp_int",    run2v(micro_pcmp_int_vf,    N, VCFG(0, 2, 0, 2), 0x4000000040000000ull, 0, 0, 4));
+  TIME("micro_pcmp_int2",   run2v(micro_pcmp_int2_vf,   N, VCFG(0, 2, 0, 2), 0x4000000040000000ull, 0, 0, 4));
+  TIME("micro_pcmp_fp_int", run2v(micro_pcmp_fp_int_vf, N, VCFG(0, 2, 0, 2), 0x4000000040000000ull, 0, 0, 4));
+  TIME("micro_vpop_pld",    run2v(micro_vpop_pld_vf,    N, VCFG(0, 2, 0, 3), 0, xd, 0, 4));
+  TIME("micro_vpop_pst",    run2v(micro_vpop_pst_vf,    N, VCFG(0, 2, 0, 3), 0, yd, 0, 4));
+  TIME("micro_pst_mix",     run2v(micro_pst_mix_vf,     N, VCFG(0, 2, 0, 2), 0, yd, zd, 4));
+  TIME("micro_vpop_pfma",   run2v(micro_vpop_pfma_vf,   N, VCFG(0, 2, 0, 3), 0x4000000040000000ull, 0, 0, 4));
+  TIME("micro_pcmp_br",     run2v(micro_pcmp_br_vf,     N, VCFG(0, 2, 0, 3), 0x4000000040000000ull, 0, 0, 4));
   printf("DONE\n");
   return 0;
 }

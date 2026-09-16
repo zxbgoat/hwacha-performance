@@ -1,0 +1,8 @@
+RESULT gather 11515 cycles 4096 elems
+RESULT gather_warm 9045 cycles 4096 elems
+RESULT gather_warm2 8765 cycles 4096 elems
+RESULT gather_seq 9480 cycles 4096 elems
+RESULT gather_seq_warm 8745 cycles 4096 elems
+RESULT gather_seq_warm2 8764 cycles 4096 elems
+DONE
+- /home/tesla/hwacha-compiler/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.HwachaL2RocketConfig/gen-collateral/TestDriver.v:158: Verilog $finish

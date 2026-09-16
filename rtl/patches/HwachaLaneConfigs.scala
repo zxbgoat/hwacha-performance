@@ -31,3 +31,11 @@ class HwachaL2B2RocketConfig extends Config(
   new hwacha.WithNLanes(2) ++
   new freechips.rocketchip.subsystem.WithNBanks(2) ++
   new HwachaRocketConfig)
+class HwachaL4B2RocketConfig extends Config(
+  new hwacha.WithNLanes(4) ++
+  new freechips.rocketchip.subsystem.WithNBanks(2) ++
+  new HwachaRocketConfig)
+class HwachaL4B4RocketConfig extends Config(
+  new hwacha.WithNLanes(4) ++
+  new freechips.rocketchip.subsystem.WithNBanks(4) ++
+  new HwachaRocketConfig)

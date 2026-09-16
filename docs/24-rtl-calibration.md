@@ -101,7 +101,7 @@ python3 scripts/compare_rtl.py                            # 与模型比较
 
 "稳态"的定义很重要：基准程序在两次计时之间用标量核做结果验证，验证循环把结果数组的最后 16 KB 拉回 Rocket 的 L1D，随后的向量 load/store 又要探测这些行。因此 `rtl/main.c` 每个内核计时三次：冷（含初始化写入留下的脏行与 VI$ 冷缺失）、`_warm`（前面有验证循环）、`_warm2`（紧接 `_warm`，无标量访问干扰）。模型对应 `_warm2`。
 
-微基准（N=4096，`rtl/results/micro-n4096.log`，无验证循环，两次计时即稳态）：
+微基准（N=4096，`rtl/results/old/micro-n4096.log`，无验证循环，两次计时即稳态）：
 
 | kernel | RTL 冷 | RTL 稳态 | C++ 模型 | 误差 |
 |---|---|---|---|---|
@@ -116,7 +116,7 @@ python3 scripts/compare_rtl.py                            # 与模型比较
 
 Python 模型与 C++ 模型在这些内核上相差不到 0.1%。计算侧（ALU、FMA、chaining、发射节奏）误差在 1%–1.5%；纯 load 误差 1%–2%；**store 参与的访存**是最大的残余差异。三次构建（只是增加了别的内核、改变了数据与代码布局）中同一 `micro_store` 稳态分别为 2365、2149、2456，`micro_copy` 稳态为 4518、4675、4604，说明 RTL 的 store 吞吐对地址/布局敏感，在每 beat 1.0–1.2 拍之间波动；纯 load 三次都是 2118–2149。进一步的变体（同一次构建）：无依赖的 load+store 4602、store 在前 4637、同一数组原地 copy 4477，与有依赖的 copy 4604 接近，说明混合开销既不来自数据依赖，也不来自访问顺序，更像 L2（InclusiveCache）处理 Put 的路径或 L1D 探测（数据由标量核写入后仍可能处于 L1D）造成。模型对 store 按每 beat 1.0 拍计，`store_beat_cycles` 旋钮可按需要设为 1.1–1.2。
 
-完整内核（`rtl/results/rtl-n4096.log`）的比较表由 `scripts/compare_rtl.py` 生成，见第 7 节。
+完整内核（`rtl/results/old/rtl-n4096.log`）的比较表由 `scripts/compare_rtl.py` 生成，见第 7 节。
 
 ## 6. 尚未建模的 RTL 效应
 
@@ -127,7 +127,7 @@ Python 模型与 C++ 模型在这些内核上相差不到 0.1%。计算侧（ALU
 
 ## 7. 完整内核对比
 
-`python3 scripts/compare_rtl.py --logs rtl/results/rtl-n4096.log`（N = 4096，以 `_warm2` 为准）：
+`python3 scripts/compare_rtl.py --logs rtl/results/old/rtl-n4096.log`（N = 4096，以 `_warm2` 为准）：
 
 | kernel | RTL 冷 | RTL `_warm` | RTL `_warm2` | C++ 模型 | 误差 | Python 模型 | 误差 |
 |---|---|---|---|---|---|---|---|
@@ -144,7 +144,7 @@ Python 模型与 C++ 模型在这些内核上相差不到 0.1%。计算侧（ALU
 
 残余的系统性偏差集中在**双精度的 2 load + 1 store 流式内核**（vvadd、daxpy −7%～−8%）：每块 2048 个 load beat 与 1024 个 store beat，RTL 每块约 3320 拍，模型约 3100 拍，多出的约 220 拍相当于混合流中每个 store beat 多花约 0.2 拍，与微基准 copy/ldst 的结论一致；单精度版本（saxpy、csaxpy）每块 beat 数减半而固定开销相同，偏差就小得多。sfilter 模型偏慢 5%：三个偏移 1 个元素的 load 在模型里各自按对齐边界多算了 beat，而 RTL 的合并更好。
 
-### N = 16384 的结果（`rtl/results/rtl-n16384.log`，只有冷启动计时，运行在 fma_peak 前被中止）
+### N = 16384 的结果（`rtl/results/old/rtl-n16384.log`，只有冷启动计时，运行在 fma_peak 前被中止）
 
 | kernel | RTL 冷 | C++ 模型 | 误差 |
 |---|---|---|---|

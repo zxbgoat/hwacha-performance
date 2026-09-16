@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """把 rtl/results/*.log 中的 RESULT 行与 C++ 模型（RTL 配置）逐内核比较。
 
-用法: python3 scripts/compare_rtl.py [--logs rtl/results/rtl-n4096.log,...] [--config configs/rtl-hwacha-rocket.json]
+用法: python3 scripts/compare_rtl.py [--logs rtl/results/rtl-n4096-aligned.log,...] [--config configs/rtl-hwacha-rocket.json]
 """
 import argparse, glob, json, os, re, subprocess, sys
 import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
