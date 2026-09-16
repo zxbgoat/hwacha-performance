@@ -79,6 +79,7 @@ int main(int argc, char **argv) {
             pos = e + 1;
         }
         lp.storeWindow = (unsigned)memP.getInt("l2_store_window", 32);
+        lp.storeConflictGlobal = memP.getBool("l2_store_conflict_global", true);
     }
     unsigned channels = (unsigned)memP.getInt("dram_channels", 2);
     mem::DRAMCtrl::P dp;

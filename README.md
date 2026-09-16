@@ -138,6 +138,7 @@ cd $PERF/rtl
 make calibrate LANES=1          # Spike 验证 → 基准 + 微基准 RTL 计时 → compare_rtl.py（超过 MAXERR=12% 返回非零）
 make calibrate LANES=2
 make calibrate LANES=4          # 同样支持 LANES=8 / 16（16 lane 仿真器每周期约 5 倍慢于 1 lane）
+make calibrate LANES=4 BANKS=2  # 多 bank L2：BANKS=2/4 选 HwachaL4B2/L4B4RocketConfig，日志后缀 -l4-b2；模型配置 configs/rtl-hwacha-rocket-l4b2.json
 make -C rodinia rtl             # 四个 Rodinia 程序（三次计时；~1 小时；同样支持 LANES=）
 make -C hcc rtl LANES=4         # hwacha-cc bench 内核
 make probe6-rtl                 # store 布局探针（docs/24 10.8 节）

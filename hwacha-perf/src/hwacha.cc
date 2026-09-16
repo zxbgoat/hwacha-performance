@@ -39,7 +39,7 @@ HwachaParams HwachaParams::from(const sim::Params &p) {
     h.freqGhz = p.getDouble("freq_ghz", h.freqGhz);
     h.storeBeatCycles = p.getDouble("store_beat_cycles", h.storeBeatCycles);
     h.loadBeatCycles = p.getDouble("load_beat_cycles", h.loadBeatCycles);
-    I("vf_block_overhead", h.vfBlockOverhead); I("vf_lane_sync_cycles", h.vfLaneSyncCycles); I("lane_max_lead_beats", h.laneMaxLeadBeats); h.sharedLineStoreTurnaround = p.getDouble("shared_line_store_turnaround", h.sharedLineStoreTurnaround); I("pred_port_cycles", h.predPortCycles); I("pred_port_int_cycles", h.predPortIntCycles);
+    I("vf_block_overhead", h.vfBlockOverhead); I("vf_lane_sync_cycles", h.vfLaneSyncCycles); I("lane_max_lead_beats", h.laneMaxLeadBeats); h.sharedLineStoreTurnaround = p.getDouble("shared_line_store_turnaround", h.sharedLineStoreTurnaround); I("pred_port_cycles", h.predPortCycles); I("pred_port_int_cycles", h.predPortIntCycles); I("branch_pred_port_cycles", h.branchPredPortCycles); I("ibox_lane_elem_cycles", h.iboxLaneElemCycles); h.lockstepIndexed = p.getBool("lockstep_indexed", h.lockstepIndexed);
     h.commitLog = p.getBool("commit_log", false);
     return h;
 }
@@ -218,7 +218,8 @@ const char *Lane::tryIssue(LaneOp &b, unsigned k, Cycles now) {
     bool fpClass = kind == Kind::Fma || kind == Kind::FConv || kind == Kind::FDiv;
     bool intClass = kind == Kind::Alu || kind == Kind::IMul || kind == Kind::IDiv;
     unsigned predCyc = ((pred && fpClass) || ((kind == Kind::FCmp || kind == Kind::Cmp) && ins.writesPrf())) ? _p.predPortCycles
-                     : (pred && intClass) ? _p.predPortIntCycles : 0;
+                     : (pred && intClass) ? _p.predPortIntCycles
+                     : (kind == Kind::Branch) ? _p.branchPredPortCycles : 0;
     if (rp && !_readPort.free(now, rp)) return "rport";
     if (predCyc && !_predRead.free(now, predCyc)) return "pport";
     std::string unit;
@@ -323,7 +324,7 @@ void Lane::vmuStep(Cycles now) {
     if (_outstanding >= _p.nVmtEntries) { vmuReason = "vmt_full"; return; }
     // lane 间锁步：RTL 的各 lane 在同一条访存指令上几乎同步推进（2 bank L2 下 32 位内核两条 lane 撞同一个 bank，
     // 只快 16%–23%，见 docs/24 §10.13）；限制本 lane 不能比最慢的 lane 多发超过 laneMaxLeadBeats 个 beat
-    if (_p.laneMaxLeadBeats && _p.nLanes > 1) {
+    if (_p.laneMaxLeadBeats && _p.nLanes > 1 && (_p.lockstepIndexed || ins.mode != Mode::Indexed)) {
         // 只与还有 beat 要发的 lane 比较（谓词化访存各 lane 的 beat 数不同，已发完的 lane 不再约束别人）
         uint64_t slowest = b->beatsSent;
         for (auto &other : b->op->lanes)
@@ -362,12 +363,14 @@ void Lane::vmuStep(Cycles now) {
     }
     _tlb.erase(it); _tlb.push_back(page);
     mem::Packet::Cmd cmd = ins.kind == Kind::Amo ? mem::Packet::AtomicReq : isStore ? mem::Packet::WriteReq : mem::Packet::ReadReq;
+    if (_p.iboxLaneElemCycles > 1 && _p.nLanes > 1 && ins.mode == Mode::Indexed && _lastIndexedCycle != NoCycle && now < _lastIndexedCycle + _p.iboxLaneElemCycles) { vmuReason = "ibox"; return; }
     // 单位步长每 beat 16 B；跨步/索引访存每元素一个请求，大小为元素大小（L2 据此区分部分写）
     auto *pkt = new mem::Packet(cmd, beat.addr, ins.mode == Mode::Unit ? _p.tlDataBytes : ins.elsize);
     auto *bs = new BeatState(); bs->lo = b; bs->strip = s; bs->beat = b->beatPtr;
     pkt->pushSenderState(bs);
     if (!_port.sendTimingReq(pkt)) { _portBlocked = true; _pendingPkt = pkt; _pendingBs = bs; vmuReason = "port_busy"; return; }
     _lastBeatCycle = now;
+    if (ins.mode == Mode::Indexed) _lastIndexedCycle = now;
     ++_outstanding; ++b->beatsSent;
     if (ins.isLoad()) ++loadBeats; else ++storeBeats;
     // store_beat_cycles 只作用于单位步长的 16 B store beat（RTL：跨步/索引 store 与 load 一样每元素 1 拍）
@@ -389,6 +392,7 @@ void Lane::recvReqRetry() {
         LaneOp *b = bs->lo;
         const Instr &ins = *b->op->ins;
         _lastBeatCycle = _h.curCycle();
+        if (ins.mode == Mode::Indexed) _lastIndexedCycle = _h.curCycle();
         ++_outstanding; ++b->beatsSent;
         if (ins.isLoad()) ++loadBeats; else ++storeBeats;
         if (++b->beatPtr >= b->beats[bs->strip].size()) {

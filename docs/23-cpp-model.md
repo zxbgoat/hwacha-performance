@@ -92,10 +92,11 @@ ctest --output-on-failure            # memtest（存储系统）+ kernels（全�
 
 ## 附：RTL 校准后新增的参数
 
-- `mem.l2_store_beat_cycles` / `mem.l2_store_switch` / `mem.l2_partial_store_switch` / `mem.l2_store_conflict` / `mem.l2_store_window`：L2 bank 的 store 通路占用（`24-rtl-calibration.md` 10.9、10.10 节），所有 lane 共享；`l2_store_conflict` 是按并发行数查表的附加代价（`mem.cc` `L2Bank::storeBeatCost`）。`store_beat_cycles` 仍是 lane 端口侧的附加代价，RTL 配置里为 1.0。
+- `mem.l2_store_beat_cycles` / `mem.l2_store_switch` / `mem.l2_partial_store_switch` / `mem.l2_store_conflict` / `mem.l2_store_window`：L2 bank 的 store 通路占用（`24-rtl-calibration.md` 10.9、10.10 节），所有 lane 共享；`l2_store_conflict` 是按并发行数查表的附加代价（`mem.cc` `L2Bank::storeBeatCost`）。 `mem.l2_store_conflict_global`（默认开）：并发行数在所有 bank 间共同计数（24 节 10.15）。`store_beat_cycles` 仍是 lane 端口侧的附加代价，RTL 配置里为 1.0。
 - `seq_age_rule`（默认开）：RTL 序列器的 age 两级优先级——刚发过 strip 的条目在 nBanks 拍内让位给其他就绪条目，没有别的就绪条目时仍可发射；store 与索引访存只从各自最老的条目发射。`plu_port`（默认开）：vpop 等谓词逻辑走独立的 VIPU 发射口。`plu_occupancy`（默认 0）：谓词逻辑单元每 strip 占用，实验用。
 - `vf_lane_sync_cycles`：多 lane 时每个 vf 块的固定附加开销（RTL 配置 20）。
 - `pred_port_cycles`（RTL 配置 2）/ `pred_port_int_cycles`（0）：共享谓词端口——vcmp 类写谓词与浮点类谓词化读各占的拍数/strip（24 节 10.14）。
+- `branch_pred_port_cycles`（0）：一致性分支读谓词占共享谓词端口的拍数，实验用（24 节 10.15：设 1 修 pcmp_br/pgain 但 divloop 变 +29%）。`ibox_lane_elem_cycles`（默认 1 = 不限）：多 lane 时每条 lane 每隔几拍才能发一个索引访存元素请求，实验开关；`lockstep_indexed`（默认关）：索引访存是否也受 lane 锁步约束（24 节 10.15）。
 - `lane_max_lead_beats`（多 lane 配置 1）：同一条访存指令上任一 lane 最多比最慢的 lane 多发的 beat 数（lane 锁步）；`shared_line_store_turnaround`（1.5）：多 lane 多 bank 下一个 strip 不足一行的 store 每换一行的 VMU 停顿。VMU 每拍只发一个请求。
 - `mem.cold_start` / `mem.l1d_probe_cycles`（4）/ `mem.l1d_dirty_bytes`（16384）：冷启动描述——按内核数组列表顺序取最后 16 KB 当作标量核刚写、仍在 L1D 里的脏行，第一次向量访问它们时 L2 要探测 L1D（每行多 4 拍并占住 bank）。`compare_rtl.py --cold` 用它与 RTL 的第一次计时比较（24 节 10.12）。
 - `fsqrt_cycles_per_elem`：与 `fdiv_cycles_per_elem` 分开的开方吞吐（10.7 节）。

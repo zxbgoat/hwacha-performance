@@ -39,7 +39,10 @@ struct HwachaParams {
     // 谓词端口：非 PLU 的谓词化向量操作读谓词、以及 vcmp 类写谓词，各占共享谓词端口 predPortCycles 拍/strip（RTL 校准 2：
     // vcmp + 两条互斥谓词化 FMA 每 strip 6 拍而不是 4）；PLU（vpop 等）有自己的端口不计
     unsigned predPortCycles = 1;
-    unsigned predPortIntCycles = 0;  // 整数 ALU 类谓词化读占谓词端口的拍数（0 = 不占）   // 同一访存指令上，一条 lane 最多比最慢的 lane 多发的 beat 数（0 = 不限制；RTL 2 bank 校准）
+    unsigned predPortIntCycles = 0;  // 整数 ALU 类谓词化读占谓词端口的拍数（0 = 不占）
+    bool lockstepIndexed = false;    // 索引访存是否也受 lane 锁步（lane_max_lead_beats）约束：各 lane 的索引流不共享行，RTL 4 lane 多 bank 下不锁步更接近（§10.15）
+    unsigned iboxLaneElemCycles = 1; // 多 lane 时每条 lane 每隔几拍才能发一个索引访存元素请求；1 = 不限（§10.15 试过全局每拍一个与每 lane 两拍，都只对一部分配置成立）
+    unsigned branchPredPortCycles = 0; // 一致性分支读谓词占共享谓词端口的拍数（RTL pcmp_br：vcmp 后的分支每 strip 12 拍而不是 10；设 2 会让 divloop 变 +29%）   // 同一访存指令上，一条 lane 最多比最慢的 lane 多发的 beat 数（0 = 不限制；RTL 2 bank 校准）
     bool buildVru = true;
     unsigned vruMaxOutstanding = 20, vruEarlyIgnore = 1;
     uint64_t vruMaxRunaheadBytes = 1ull << 24;
@@ -141,6 +144,7 @@ public:
     std::string lastReason = "empty", vmuReason = "idle";
     // 统计
     uint64_t stripsIssued = 0, loadBeats = 0, storeBeats = 0, readPortBusy = 0, writePortBusy = 0, beatsReturned = 0;
+    Cycles _lastIndexedCycle = NoCycle; // 本 lane 上一个索引访存元素请求的发出拍（IBoxML 每 lane 节拍）
     Cycles _lastBeatCycle = NoCycle;   // 本拍是否已经（经重试路径）发出过 beat：VMU 每拍只发一个请求
     unsigned outstanding() const { return _outstanding; }
     size_t vldqSize() const { return _vldq.size(); }

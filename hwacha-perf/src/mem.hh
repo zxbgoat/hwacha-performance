@@ -155,6 +155,7 @@ public:
         //   分数代价按累计信用折算成整拍。三种机械模型（命中 MSHR 池、读-改-写合并窗口、子 bank 冲突排队）都拟合不了 1–16 lane，已删除。
         double storeCycles = 1.0, storeSwitch = 0.0, partialStoreSwitch = 0.0;
         std::vector<std::pair<unsigned, double>> storeConflict; unsigned storeWindow = 32;
+        bool storeConflictGlobal = true;    // 并发行数在所有 bank 之间共同计数（否则每个 bank 各自计数）；docs/24 10.15
         // 冷启动：标量核刚写过、还留在 L1D 里的脏行第一次被向量访存触到时，L2 要先探测（Probe）L1D 拿回数据，
         // 该请求多花 probeCycles 拍并占住 bank（RTL 实测每行约 4 拍）。markProbe() 标记这些行
         unsigned probeCycles = 0;
@@ -219,6 +220,8 @@ private:
     double _storeCredit = 0;              // 分数占用的累计信用
     Addr _lastStoreLine = ~Addr(0);
     std::deque<std::pair<Addr, int>> _recentStoreBeats;   // 最近 storeWindow 个 store beat 的 (行, 来源端口)
+    static std::deque<std::pair<Addr, int>> _sharedRecentStoreBeats;  // storeConflictGlobal 时所有 bank 共用的窗口
+    static double _sharedLastStoreConcurrency;
     double _lastStoreConcurrency = 1.0;
     double storeBeatCost(Addr line, unsigned size, int src);   // 一个 store beat 占用 store 通路的拍数
     CpuPort _cpu;

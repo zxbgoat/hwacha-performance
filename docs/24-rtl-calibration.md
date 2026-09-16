@@ -30,8 +30,8 @@
 | 套件 | 1 lane | 2 lane | 4 lane | 8 lane | 16 lane |
 |---|---|---|---|---|---|
 | 完整基准（8 个内核）平均 / 最大 | 2.4% / 7.0% | 3.4% / 6.1% | 1.7% / 4.5% | 2.3% / 4.8% | 1.4% / 3.7% |
-| 2 lane + 2 bank L2：完整基准 / 微基准 | — | 7.3% / 28.1%（gather）、4.5% / 14.2% | — | — | — |
-| 微基准（不含 micro_empty）平均 / 最大 | 1.8% / 6.2%（26 个，含谓词分解） | 1.9% / 3.6% | 1.1% / 4.8% | 1.8% / 11.0% | 2.2% / 11.2% |
+| 多 bank L2：完整基准 / 微基准 | — | 2 bank：7.0% / 28.0%（gather）、3.8% / 14.2% | 2 bank：4.2% / 6.3%、5.3% / 38.2%（sstride）；4 bank：4.7% / 11.5%、3.1% / 24.3%（pcmp_br） | — | — |
+| 微基准（不含 micro_empty）平均 / 最大 | 3.2% / 30.3%（35 个，含谓词分解；pcmp_br 之外 ≤ 11%） | 1.9% / 3.6% | 1.1% / 4.8% | 1.8% / 11.0% | 2.2% / 11.2% |
 | hwacha-cc bench 内核（5 个，踪迹驱动）平均 / 最大 | 8.9% / 18.3%（clamp） | — | 4.0% / 4.8% | — | — |
 | Rodinia 内核（5 个，踪迹驱动）平均 / 最大 | 4.7% / 9.7%（pathfinder） | — | 6.3% / 12.7%（kmeans_c） | — | — |
 
@@ -533,10 +533,75 @@ micro_empty 在 8/16 lane 下模型偏快 40%–59%（RTL 122 / 100 拍 vs 模�
 
 **回归基线**：`check_calibration.py` 现在覆盖 169 个条目（1/2/4/8/16 lane 与 2 lane + 2 bank 的基准与微基准、谓词微基准、1 与 4 lane 的 hcc/Rodinia 踪迹套件）。
 
+### 10.15 第五轮：谓词残差的第三轮分解、IBoxML 共享索引端口、FMA 簇选择规则、4 lane 多 bank
+
+**谓词残差第三轮微基准**（`rtl/results/micro-n4096-pred3.log`，1 lane，512 strip）：
+
+| 微基准 | 内容 | RTL 稳态 | 拍/strip | 模型误差 |
+|---|---|---|---|---|
+| pcmp_int / pcmp_int2 | vcmp + 一条 / 两条整数谓词化 ALU | 2083 / 2111 | 4.1 | −1.0% / −2.2% |
+| pcmp_fp_int | vcmp + `@vp1 vfmul.s` + `@!vp1 vaddw`（clamp 的精确模式） | 2112 | 4.1 | −2.2% |
+| vpop_pfma | vpop + 两条谓词化 FMA | 2165 | 4.2 | −0.7% |
+| vpop_pst | vpop + `@vp1 vsw` | 1213 | 2.4 | −0.9% |
+| vpop_pld | vpop + `@vp1 vlw` | 1203 | 2.3 | −10.9% |
+| pst_mix | `@vp0 vsw` + 无谓词 `vsw`（两条 store） | 2396 | 4.7 | −8.3% |
+| pcmp_br | vcmp + vpop + `@!vp2 vcjal` + 谓词化 FMA（divloop 的模式） | 6209 | 12.1 | −30.3% |
+
+结论：(1) clamp 的块本身（pcmp_fp_int）模型只差 −2.2%，所以 hcc clamp 的 −18% 不在谓词端口，而在它的访存侧（每 strip 一条 load 一条 store 且 N 小，冷启动比例大），不再拟合。(2) 整数类谓词化读确实不占端口（pcmp_int2 −2.2%），维持 `pred_port_int_cycles` = 0。(3) 唯一大的残差是 **vcmp 之后紧跟一致性分支**：分支本身 6 拍/strip（§10.12），紧跟 vcmp 时整块 12 拍，模型 8.4。把分支读谓词也算进共享端口（`branch_pred_port_cycles` = 1）能把 pcmp_br 拉到 −17%、pgain −7.7% → −1.8%、pathfinder −9.7% → −8.0%，但 divloop 从 −13% 变 +29%（它每次迭代 17 条分支，全部串到端口上），总误差变差，所以默认仍为 0，只保留开关。分支与 vcmp 之间的真实机制（分支的谓词归约要等 vcmp 的谓词写回，还是 VQU 与谓词写端口冲突）需要 RTL 波形，本轮未做。vpop_pld −11% 与 pst_mix −8% 都是访存侧的小残差（谓词化 load 的谓词不经 tryIssue 的端口，试过给它 1–2 拍没有任何变化），记录为已知。
+
+**多 bank 下的索引访存**。`tlv-probe8-l2-b2.log.gz`（2 lane、2 bank、探针 8 的随机 gather 与顺序 gather）的 A 通道统计：
+
+| | A 请求 | 跨度（拍） | beat/拍 | 双发拍数 | 平均等待 |
+|---|---|---|---|---|---|
+| gather（随机下标） | 8192 | 7085 | 1.16 | 1607 | 0.18 |
+| gather_seq（顺序下标） | 8192 | 6387 | 1.28 | 2282 | 0.00 |
+
+顺序下标时两条 lane 的元素请求落在相邻两行、不同 bank，理论上可以每拍 2 个，但实际只有 36% 的拍是双发，且几乎没有请求在等 bank（wait = 0）——不是 bank 冲突，而是两条 lane 大部分时间不同时发请求。加上本轮的 4 lane 多 bank 数据，gather（8192 个请求）的总吞吐是：
+
+| | 1 lane | 2 lane 1 bank | 2 lane 2 bank | 4 lane 1 bank | 4 lane 2 bank | 4 lane 4 bank |
+|---|---|---|---|---|---|---|
+| RTL 稳态 | 8543 | 8766 | 7150 | 8735 | 4426 | 2596 |
+| 请求/拍 | 0.96 | 0.93 | 1.15 | 0.94 | 1.85 | 3.16 |
+
+单 bank 各 lane 数都被 bank 的每拍一个请求限死，模型命中；4 lane 2 bank 达到 bank 上限的 93%，4 lane 4 bank 79%，唯独 2 lane 2 bank 只有上限的 58%。试过两种解释都只对一部分配置成立：(a) 多 lane 的索引请求经共享 IBoxML 全机每拍一个——2 lane 2 bank 从 −28% 到 −11%，但 4 lane 2 bank 变 +45%（RTL 明显超过每拍一个）；(b) 每 lane 每 2 拍一个元素——2 lane 2 bank −11%、4 lane 2 bank +12%、4 lane 4 bank +36%。读 `vmu.scala` 的 IBoxML：它按 lane 优先级复用器每拍给一条 lane 的队列入一个**子操作（一个 strip）**，不是每拍一个元素，所以 (a)(b) 都没有结构依据，两个开关（`ibox_lane_elem_cycles`、默认 1 = 不限）保留但关闭。另一个可确认的点：索引流各 lane 不共享行，锁步约束不该作用于它——`lockstep_indexed` = false 后 4 lane 2 bank 从 +8.2% 到 +6.1%，4 lane 4 bank 从 +14.1% 到 +11.1%，2 lane 2 bank 不变（−28%，仍是已知残差，回归脚本里跳过误差检查）。2 lane 2 bank 为什么两条 lane 不同时发索引请求，需要 VMU 内部（ABox/VGU 地址生成）的波形，本轮未做。
+
+**第二个 FMA 簇的选择规则**（`sequencer-lane.scala` 的 `check`）：每个序列器条目发射前检查结构冒险，簇 0 用操作数端口 0/1/2 和 SRAM 写端口 0，簇 1 用端口 3/4/5 和写端口 1；`select.vfmu := Mux(shazard_vfmu0, 1, 0)`——**只有簇 0 有冒险时才选簇 1**，两个簇都有冒险才停。所以同一块里两条独立 FMA 串行（§10.14 的 fma2_indep 4 拍/strip）不是簇选择造成的，而是它们共用的 bank SRAM 读端口：一个 strip 的操作数读占 bank 读端口 `rports` 个 tick，第二条 FMA 无论选哪个簇都要等读端口。模型的 `_readPort` 占用（每条指令按操作数个数占读端口）表达的正是这一约束，`fma_units` = 2 只对读端口空闲时的第二条 FMA 生效，与 RTL 的规则一致，不需要再加簇选择逻辑。
+
+**4 lane 多 bank（`HwachaL4B2RocketConfig`、`HwachaL4B4RocketConfig`，`make rtl LANES=4 BANKS=2/4`，配置 `configs/rtl-hwacha-rocket-l4b2/-l4b4.json`）**。微基准（`micro-n4096-l4-b2.log`、`micro-n4096-l4-b4.log`）与探针 7 的 TileLink 跟踪（`tlv-probe7-l4-b4.log.gz`）：
+
+| 4 lane，2048 beat 的 64 位 unit store | 1 bank | 2 bank | 4 bank |
+|---|---|---|---|
+| RTL 稳态（micro_store） | 2461 | 1113 | 678 |
+| 每 bank 每 beat 拍数 | 1.18 | 1.04 | 1.23 |
+| 跟踪：A 通道 beat/拍 | — | — | 3.42（load64 3.97） |
+
+4 bank 时 load64 完美 4 beat/拍，store64 只有 3.42：跟踪里 451 拍是 4 个 beat，另有 61 拍只有 1 个、61 拍 3 个——四条 lane 锁步换行组时有一条晚一拍，其余三条等它。每 beat 1.17 拍与 4 lane 单 bank（并发行数 n = 4 → 表值 1.20）一样，尽管每个 bank 此时只看到一条 lane 的一行（按 bank 计 n = 1 → 1.05）。也就是说 store 的"并发行数"代价不在 bank 里，而在 lane 侧的锁步。模型改为 `l2_store_conflict_global`（默认开）：并发行数在所有 bank 之间共同计数。效果：4 lane 4 bank 的 store 类从 −6%～−12% 到 ±2%（套件平均 4.7% → 3.1%），2 lane 2 bank 从 −5%～−10% 到 −3%～−6%（4.8% → 3.8%）；但 4 lane 2 bank 反而从 +3%～+5% 变成 +8%～+16%（3.9% → 5.3%）——RTL 里两条 lane 共用一个 bank 时 store 只要 1.04 拍/beat，比每 bank 一条 lane 时便宜，两种计数方式都解释不了，取三个配置里两个变好的全局计数。另外 4 lane 2 bank 的跨步 store 模型 +28%（RTL 每 bank 1.03 拍/元素，部分写的换行代价在两条 lane 交错时消失了；单 bank 1.49，4 bank 1.29），4 bank 下跨步 load/store 与 st2 −10%～−12%（RTL 元素级请求 ~3.3 个/拍，unit load 3.45，模型 3.75），pcmp_br −24%（同 1 lane）。这些记为已知残差。
+
+4 lane 多 bank 完整基准（`rtl-n4096-l4-b2.log`、`rtl-n4096-l4-b4.log`）：
+
+| 内核 | 4 lane 2 bank RTL | 模型 | 误差 | 4 lane 4 bank RTL | 模型 | 误差 |
+|---|---|---|---|---|---|---|
+| vvadd | 3157 | 3334 | +5.6% | 1696 | 1711 | +0.9% |
+| saxpy | 1699 | 1695 | −0.2% | 1441 | 1438 | −0.2% |
+| daxpy | 3162 | 3334 | +5.4% | 1703 | 1711 | +0.5% |
+| csaxpy | 2023 | 2145 | +6.0% | 1764 | 1888 | +7.0% |
+| sfilter | 2879 | 2779 | −3.5% | 2160 | 2409 | +11.5% |
+| gather | 4426 | 4698 | +6.1% | 2596 | 2883 | +11.1% |
+| dgemm_opt | 2515 | 2357 | −6.3% | 2258 | 2131 | −5.6% |
+| fma_peak | 3093 | 3107 | +0.5% | 3093 | 3107 | +0.5% |
+| 平均 | | | 4.2% | | | 4.7% |
+
+64 位内核在 2 bank 下比 1 bank 快 2.1 倍、4 bank 下 3.9 倍（vvadd 6655 → 3157 → 1696），模型都跟上；32 位的 saxpy 因锁步只快 1.9/2.3 倍（3298 → 1699 → 1441），模型命中。两个套件都进了回归基线（`4b2`、`4b4`）。
+
+**16 lane 多线程仿真器复查**：§10.13 说 `VERILATOR_THREADS=4` 的 16 lane 仿真器比单线程快 3.4 倍但周期数差 1%–5%。用与单线程版相同源码状态重建后复跑基准（`rtl-n4096-l16-threads.log`），8 个内核的 warm2 周期数与 `rtl-n4096-l16.log` **逐个相同**（vvadd 8182、saxpy 3466、gather 10233、dgemm_opt 4376 …）。之前的差异来自两个二进制的 Chisel 源码状态不同（多线程版建于 TileLink 跟踪/IBoxML 修复之前），不是多线程调度的不确定性；多线程仿真器可以放心用于校准日志。
+
+**kmeans_c 4 lane +12.7%**：块很短（1–9 条指令，248 块），扫 `vf_lane_sync_cycles` = 10/20/30 只让它在 +11.2%/+12.7%/+14.2% 间变化，而 micro_empty 在 4 lane 是 −21%/−16%/−10%、16 lane 是 −49%/−39%/−29%，两者方向相反，说明每块的固定同步开销不是常数（空块比有访存的块贵得多）；20 维持不变，kmeans_c 记为已知残差。
+
 ## 11. 下一步
 
-1. 谓词密集块的残差（clamp −18%、divloop −13%、pathfinder −10%、pgain −8%）：§10.14 的谓词端口只解释了 vcmp + 浮点谓词化读；整数类谓词化读的代价介于 0 与 2 拍之间，vpop + 谓词化访存的组合（pgain/pathfinder）需要新的微基准分解。
-2. store 通路仍是按并发行数查表的经验模型（10.10）；多 bank 下 store 类偏乐观 5%–10%、索引访存 −28%（§10.14），需要给 VGU 路径也加锁步并解释 2 bank 下 store 的每行代价。
-3. 跨步 4 B store 在 8/16 lane 下 +11%；1 lane 下 store 的布局波动（10.8）无法复现。
-4. VRU 在开源 RTL 上无法校验（SimDRAM 无延迟，§10.13）；要验证 `25-design-space.md` 的 VRU 结论需要换成有真实时序的 DRAM 模型（Chipyard 的 FASED/DRAMSim 后端）。多 bank L2 下模型缺少 lane 间锁步约束：32 位内核与索引访存偏乐观 28%–40%，store 类偏乐观 5%–14%（§10.13）；`25-design-space.md` 第 3 节中每 lane 一个 bank 的收益对 32 位内核被高估。
-5. Chisel 改动只在 `rtl/patches` 里；IBoxML 修复值得给 hwacha 上游提 issue/PR。
+1. 谓词残差：vcmp 之后紧跟一致性分支（pcmp_br 12 拍/strip，模型 8.4；divloop −13%、pathfinder −10%）是最大的单项，需要 RTL 波形确认分支的谓词归约与 vcmp 谓词写回之间的依赖（§10.15）；vpop_pld −11%、pst_mix −8% 是访存侧小残差。
+2. 索引访存：2 lane 2 bank 的 gather −28%（两条 lane 不同时发索引请求，4 lane 没有这个现象），需要看 VMU ABox/VGU 地址生成的波形（§10.15）。
+3. store 通路仍是按并发行数查表的经验模型（§10.10），且并发行数已改为跨 bank 全局计数（§10.15）；4 lane 2 bank 下两条 lane 共用一个 bank 时 RTL 反而更便宜（1.04 拍/beat），跨步 store 的部分写换行代价在两 lane 交错时消失（模型 +28%），4 bank 下元素级请求 ~3.3 个/拍（模型 3.75，−12%）——这些需要 InclusiveCache 侧的机制而不是再加表。
+4. VRU 在开源 RTL 上无法校验（SimDRAM 无延迟，§10.13）；要验证 `25-design-space.md` 的 VRU 结论需要换成有真实时序的 DRAM 模型（Chipyard 的 FASED/DRAMSim 后端）。
+5. 每块固定同步开销不是常数（micro_empty 4/16 lane −16%/−39%，kmeans_c 4 lane +13%，§10.15）；需要按块内容（是否有访存、指令数）分解 vf 的开销。
+6. Chisel 改动只在 `rtl/patches` 里；IBoxML 修复与 VRU 不可观测两条 issue 正文在 `rtl/patches/UPSTREAM.md`，未提交。

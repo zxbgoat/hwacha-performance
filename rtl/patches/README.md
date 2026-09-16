@@ -17,6 +17,6 @@
 | `chipyard-hwacha-generator.patch` | `chipyard/generators/hwacha` | hwacha-compiler 的四个集成修复（icache 行宽、frontend 行复用、SMU TLB `prv`、谓词 ALL 归约）与 FPU 类型标签修复、`+hwacha_vmu_trace`；本项目加的 `+hwacha_tl_trace`（VMUTileLink A/D 通道打印）与 `IBoxML` 的 `aret` 修复（`last` 标记，解决 2 lane 以上索引访存的 `qcntr` 断言） |
 | `chipyard-inclusivecache-tl-trace.patch` | `chipyard/generators/rocket-chip-inclusive-cache` | `+hwacha_tl_trace` 时打印 L2 bank 内外侧 TileLink 握手与 MSHR 占用 |
 | `chipyard-rocketchip-rocc-fpu.patch` | `chipyard/generators/rocket-chip` | hwacha-compiler 的修复：RoCC FPU 端口在仲裁连接后被接成 `DontCare`，Hwacha 标量浮点会挂死 |
-| `HwachaLaneConfigs.scala` | 复制到 `chipyard/generators/chipyard/src/main/scala/config/` | `HwachaL2/L4/L8/L16RocketConfig`（`WithNLanes(2/4/8/16) ++ HwachaRocketConfig`）、`HwachaNoVRURocketConfig`（关闭 VRU）、`HwachaL2B2RocketConfig`（2 lane + `WithNBanks(2)`） |
+| `HwachaLaneConfigs.scala` | 复制到 `chipyard/generators/chipyard/src/main/scala/config/` | `HwachaL2/L4/L8/L16RocketConfig`（`WithNLanes(2/4/8/16) ++ HwachaRocketConfig`）、`HwachaNoVRURocketConfig`（关闭 VRU）、`HwachaL2B2/L4B2/L4B4RocketConfig`（多 bank L2：`WithNLanes(n) ++ WithNBanks(b)`） |
 
 `chipyard-hwacha-generator.patch` 已包含 hwacha-compiler 仓库 `patches/chipyard-hwacha-rtl-fixes.patch` 的内容，二者只应用其一。应用方式见仓库根目录 README 的"复现"一节。

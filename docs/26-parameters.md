@@ -39,6 +39,9 @@ C++ 模型（`hwacha-perf/`）的全部参数，按来源分三类：**结构**�
 | `plu_occupancy` | 0 | §10.12 | 谓词逻辑单元每 strip 占用（实验用，设非 0 会让 divloop 变差） |
 | `pred_port_cycles` / `pred_port_int_cycles` | 2 / 0 | §10.14 | 共享谓词端口：vcmp 写与浮点谓词化读 / 整数谓词化读各占的拍数 |
 | `lane_max_lead_beats` | 1（多 lane） | §10.14 | 同一访存指令上 lane 间最大领先 beat 数（锁步） |
+| `ibox_lane_elem_cycles` | 1（不限） | §10.15 | 多 lane 时每条 lane 每隔几拍发一个索引访存元素请求（实验开关） |
+| `lockstep_indexed` | false | §10.15 | 索引访存是否也受 lane 锁步约束 |
+| `branch_pred_port_cycles` | 0 | §10.15 | 一致性分支读谓词占谓词端口的拍数（实验开关） |
 | `shared_line_store_turnaround` | 1.5（多 lane） | §10.14 | 多 lane 多 bank、strip 不足一行时 store 每换行的停顿 |
 | `ctrl_cycles_per_iter` | 0 | | 控制线程每次 stripmine 的簿记周期（静态模式；`@ctrl` 注解） |
 
@@ -63,6 +66,7 @@ C++ 模型（`hwacha-perf/`）的全部参数，按来源分三类：**结构**�
 | `l2_store_switch` / `l2_partial_store_switch` | 0 / 0.2 | §10.9、§10.7 | 换行 / 部分写（跨步、索引 store）换行的附加拍数 |
 | `l2_store_conflict` | `1:0.05,2:0.09,4:0.20,8:0.75,16:0.97` | §10.10 | 按并发行数查表的 store 附加拍数（读-改-写冲突），log2 插值 |
 | `l2_store_window` | 32 | §10.10 | 并发行数的观察窗口（beat 数） |
+| `l2_store_conflict_global` | true | §10.15 | 并发行数跨所有 bank 共同计数（每 bank 一条 lane 时 4 lane 4 bank 的 store 与 4 lane 1 bank 一样贵） |
 | `l2_store_blocks_loads` | true | §10.12 | A 通道按序：store 通路忙时 load 也等 |
 | `l1d_probe_cycles` / `l1d_dirty_bytes` | 4 / 16384 | §10.12 | 冷启动描述：L1D 脏行探测每行拍数 / 脏行字节数 |
 

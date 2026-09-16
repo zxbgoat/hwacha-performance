@@ -136,8 +136,8 @@
  },
  "bench/2L/gather": {
   "rtl": 8766,
-  "model": 8498,
-  "err": -3.0572667122975132
+  "model": 8497,
+  "err": -3.0686744239105637
  },
  "bench/2L/saxpy": {
   "rtl": 3335,
@@ -226,8 +226,8 @@
  },
  "bench/4L/gather": {
   "rtl": 8735,
-  "model": 8658,
-  "err": -0.8815111619919863
+  "model": 8659,
+  "err": -0.8700629650829994
  },
  "bench/4L/saxpy": {
   "rtl": 3298,
@@ -566,8 +566,8 @@
  },
  "bench/2b2L/daxpy": {
   "rtl": 3334,
-  "model": 3196,
-  "err": -4.139172165566887
+  "model": 3236,
+  "err": -2.939412117576485
  },
  "bench/2b2L/dgemm_opt": {
   "rtl": 4306,
@@ -581,8 +581,8 @@
  },
  "bench/2b2L/gather": {
   "rtl": 7150,
-  "model": 5138,
-  "err": -28.13986013986014
+  "model": 5145,
+  "err": -28.041958041958043
  },
  "bench/2b2L/saxpy": {
   "rtl": 2812,
@@ -596,8 +596,8 @@
  },
  "bench/2b2L/vvadd": {
   "rtl": 3331,
-  "model": 3196,
-  "err": -4.052836985890123
+  "model": 3236,
+  "err": -2.851996397478235
  },
  "micro/2b2L/micro_alu": {
   "rtl": 4150,
@@ -606,8 +606,8 @@
  },
  "micro/2b2L/micro_copy": {
   "rtl": 2283,
-  "model": 2171,
-  "err": -4.905825667980727
+  "model": 2210,
+  "err": -3.1975470871660097
  },
  "micro/2b2L/micro_empty": {
   "rtl": 314,
@@ -636,18 +636,18 @@
  },
  "micro/2b2L/micro_inplace": {
   "rtl": 2279,
-  "model": 2163,
-  "err": -5.089951733216323
+  "model": 2204,
+  "err": -3.290917068889864
  },
  "micro/2b2L/micro_ld4st1": {
   "rtl": 5484,
-  "model": 5376,
-  "err": -1.9693654266958425
+  "model": 5416,
+  "err": -1.2399708242159009
  },
  "micro/2b2L/micro_ldst": {
   "rtl": 2280,
-  "model": 2171,
-  "err": -4.780701754385965
+  "model": 2210,
+  "err": -3.0701754385964914
  },
  "micro/2b2L/micro_load": {
   "rtl": 1085,
@@ -666,83 +666,553 @@
  },
  "micro/2b2L/micro_sstride": {
   "rtl": 2631,
-  "model": 2265,
-  "err": -13.911060433295326
+  "model": 2347,
+  "err": -10.794374762447738
  },
  "micro/2b2L/micro_st2": {
   "rtl": 2463,
-  "model": 2220,
-  "err": -9.866017052375152
+  "model": 2302,
+  "err": -6.536743808363784
  },
  "micro/2b2L/micro_stld": {
   "rtl": 2288,
-  "model": 2176,
-  "err": -4.895104895104895
+  "model": 2215,
+  "err": -3.1905594405594404
  },
  "micro/2b2L/micro_store": {
   "rtl": 1251,
-  "model": 1138,
-  "err": -9.03277378097522
+  "model": 1177,
+  "err": -5.915267785771383
+ },
+ "bench/4b2L/csaxpy": {
+  "rtl": 2023,
+  "model": 2145,
+  "err": 6.030647553138903
+ },
+ "bench/4b2L/daxpy": {
+  "rtl": 3162,
+  "model": 3334,
+  "err": 5.439595192915876
+ },
+ "bench/4b2L/dgemm_opt": {
+  "rtl": 2515,
+  "model": 2357,
+  "err": -6.282306163021869
+ },
+ "bench/4b2L/fma_peak": {
+  "rtl": 3093,
+  "model": 3107,
+  "err": 0.45263498221791143
+ },
+ "bench/4b2L/gather": {
+  "rtl": 4426,
+  "model": 4698,
+  "err": 6.1455038409399005
+ },
+ "bench/4b2L/saxpy": {
+  "rtl": 1699,
+  "model": 1695,
+  "err": -0.23543260741612712
+ },
+ "bench/4b2L/sfilter": {
+  "rtl": 2879,
+  "model": 2779,
+  "err": -3.473428273706148
+ },
+ "bench/4b2L/vvadd": {
+  "rtl": 3157,
+  "model": 3334,
+  "err": 5.606588533417802
+ },
+ "micro/4b2L/micro_alu": {
+  "rtl": 2077,
+  "model": 2080,
+  "err": 0.14443909484833894
+ },
+ "micro/4b2L/micro_copy": {
+  "rtl": 2141,
+  "model": 2310,
+  "err": 7.893507706679122
+ },
+ "micro/4b2L/micro_empty": {
+  "rtl": 166,
+  "model": 157,
+  "err": -5.421686746987952
+ },
+ "micro/4b2L/micro_fdiv_d": {
+  "rtl": 3146,
+  "model": 3115,
+  "err": -0.9853782581055308
+ },
+ "micro/4b2L/micro_fdiv_s": {
+  "rtl": 3147,
+  "model": 3113,
+  "err": -1.0803940260565619
+ },
+ "micro/4b2L/micro_fma2_indep": {
+  "rtl": 531,
+  "model": 545,
+  "err": 2.6365348399246704
+ },
+ "micro/4b2L/micro_fma2_waw": {
+  "rtl": 556,
+  "model": 545,
+  "err": -1.9784172661870503
+ },
+ "micro/4b2L/micro_fma_dep": {
+  "rtl": 2106,
+  "model": 2083,
+  "err": -1.0921177587844255
+ },
+ "micro/4b2L/micro_fsqrt_s": {
+  "rtl": 5200,
+  "model": 5161,
+  "err": -0.75
+ },
+ "micro/4b2L/micro_inplace": {
+  "rtl": 2113,
+  "model": 2309,
+  "err": 9.275911026975864
+ },
+ "micro/4b2L/micro_ld4st1": {
+  "rtl": 5426,
+  "model": 5384,
+  "err": -0.7740508661997788
+ },
+ "micro/4b2L/micro_ldst": {
+  "rtl": 2141,
+  "model": 2310,
+  "err": 7.893507706679122
+ },
+ "micro/4b2L/micro_load": {
+  "rtl": 1109,
+  "model": 1086,
+  "err": -2.073940486925158
+ },
+ "micro/4b2L/micro_load2": {
+  "rtl": 2142,
+  "model": 2111,
+  "err": -1.4472455648926237
+ },
+ "micro/4b2L/micro_lstride": {
+  "rtl": 2111,
+  "model": 2111,
+  "err": 0.0
+ },
+ "micro/4b2L/micro_pcmp": {
+  "rtl": 530,
+  "model": 542,
+  "err": 2.2641509433962264
+ },
+ "micro/4b2L/micro_pcmp_2diff": {
+  "rtl": 794,
+  "model": 804,
+  "err": 1.2594458438287153
+ },
+ "micro/4b2L/micro_pcmp_2use": {
+  "rtl": 790,
+  "model": 804,
+  "err": 1.7721518987341771
+ },
+ "micro/4b2L/micro_pcmp_br": {
+  "rtl": 1574,
+  "model": 1191,
+  "err": -24.332909783989834
+ },
+ "micro/4b2L/micro_pcmp_fp_int": {
+  "rtl": 576,
+  "model": 550,
+  "err": -4.513888888888889
+ },
+ "micro/4b2L/micro_pcmp_int": {
+  "rtl": 544,
+  "model": 547,
+  "err": 0.5514705882352942
+ },
+ "micro/4b2L/micro_pcmp_int2": {
+  "rtl": 574,
+  "model": 548,
+  "err": -4.529616724738676
+ },
+ "micro/4b2L/micro_pcmp_use": {
+  "rtl": 560,
+  "model": 548,
+  "err": -2.142857142857143
+ },
+ "micro/4b2L/micro_pfma2_same": {
+  "rtl": 557,
+  "model": 547,
+  "err": -1.7953321364452424
+ },
+ "micro/4b2L/micro_pmix": {
+  "rtl": 642,
+  "model": 632,
+  "err": -1.557632398753894
+ },
+ "micro/4b2L/micro_pst_mix": {
+  "rtl": 1284,
+  "model": 1293,
+  "err": 0.7009345794392523
+ },
+ "micro/4b2L/micro_sstride": {
+  "rtl": 2116,
+  "model": 2924,
+  "err": 38.18525519848771
+ },
+ "micro/4b2L/micro_st2": {
+  "rtl": 2224,
+  "model": 2515,
+  "err": 13.08453237410072
+ },
+ "micro/4b2L/micro_stld": {
+  "rtl": 2148,
+  "model": 2315,
+  "err": 7.774674115456238
+ },
+ "micro/4b2L/micro_store": {
+  "rtl": 1113,
+  "model": 1285,
+  "err": 15.45372866127583
+ },
+ "micro/4b2L/micro_vpop": {
+  "rtl": 681,
+  "model": 670,
+  "err": -1.6152716593245227
+ },
+ "micro/4b2L/micro_vpop_indep": {
+  "rtl": 657,
+  "model": 670,
+  "err": 1.97869101978691
+ },
+ "micro/4b2L/micro_vpop_pfma": {
+  "rtl": 626,
+  "model": 633,
+  "err": 1.1182108626198084
+ },
+ "micro/4b2L/micro_vpop_pld": {
+  "rtl": 686,
+  "model": 577,
+  "err": -15.889212827988338
+ },
+ "micro/4b2L/micro_vpop_pst": {
+  "rtl": 740,
+  "model": 759,
+  "err": 2.5675675675675675
+ },
+ "bench/4b4L/csaxpy": {
+  "rtl": 1764,
+  "model": 1888,
+  "err": 7.029478458049887
+ },
+ "bench/4b4L/daxpy": {
+  "rtl": 1703,
+  "model": 1711,
+  "err": 0.4697592483852026
+ },
+ "bench/4b4L/dgemm_opt": {
+  "rtl": 2258,
+  "model": 2131,
+  "err": -5.62444641275465
+ },
+ "bench/4b4L/fma_peak": {
+  "rtl": 3093,
+  "model": 3107,
+  "err": 0.45263498221791143
+ },
+ "bench/4b4L/gather": {
+  "rtl": 2596,
+  "model": 2883,
+  "err": 11.055469953775038
+ },
+ "bench/4b4L/saxpy": {
+  "rtl": 1441,
+  "model": 1438,
+  "err": -0.2081887578070784
+ },
+ "bench/4b4L/sfilter": {
+  "rtl": 2160,
+  "model": 2409,
+  "err": 11.527777777777779
+ },
+ "bench/4b4L/vvadd": {
+  "rtl": 1696,
+  "model": 1711,
+  "err": 0.8844339622641509
+ },
+ "micro/4b4L/micro_alu": {
+  "rtl": 2077,
+  "model": 2080,
+  "err": 0.14443909484833894
+ },
+ "micro/4b4L/micro_copy": {
+  "rtl": 1195,
+  "model": 1198,
+  "err": 0.2510460251046025
+ },
+ "micro/4b4L/micro_empty": {
+  "rtl": 166,
+  "model": 157,
+  "err": -5.421686746987952
+ },
+ "micro/4b4L/micro_fdiv_d": {
+  "rtl": 3146,
+  "model": 3115,
+  "err": -0.9853782581055308
+ },
+ "micro/4b4L/micro_fdiv_s": {
+  "rtl": 3147,
+  "model": 3113,
+  "err": -1.0803940260565619
+ },
+ "micro/4b4L/micro_fma2_indep": {
+  "rtl": 531,
+  "model": 545,
+  "err": 2.6365348399246704
+ },
+ "micro/4b4L/micro_fma2_waw": {
+  "rtl": 556,
+  "model": 545,
+  "err": -1.9784172661870503
+ },
+ "micro/4b4L/micro_fma_dep": {
+  "rtl": 2106,
+  "model": 2083,
+  "err": -1.0921177587844255
+ },
+ "micro/4b4L/micro_fsqrt_s": {
+  "rtl": 5200,
+  "model": 5161,
+  "err": -0.75
+ },
+ "micro/4b4L/micro_inplace": {
+  "rtl": 1166,
+  "model": 1190,
+  "err": 2.058319039451115
+ },
+ "micro/4b4L/micro_ld4st1": {
+  "rtl": 2771,
+  "model": 2883,
+  "err": 4.041862143630459
+ },
+ "micro/4b4L/micro_ldst": {
+  "rtl": 1193,
+  "model": 1198,
+  "err": 0.4191114836546521
+ },
+ "micro/4b4L/micro_load": {
+  "rtl": 594,
+  "model": 581,
+  "err": -2.1885521885521886
+ },
+ "micro/4b4L/micro_load2": {
+  "rtl": 1111,
+  "model": 1102,
+  "err": -0.8100810081008101
+ },
+ "micro/4b4L/micro_lstride": {
+  "rtl": 1245,
+  "model": 1094,
+  "err": -12.1285140562249
+ },
+ "micro/4b4L/micro_pcmp": {
+  "rtl": 530,
+  "model": 542,
+  "err": 2.2641509433962264
+ },
+ "micro/4b4L/micro_pcmp_2diff": {
+  "rtl": 794,
+  "model": 804,
+  "err": 1.2594458438287153
+ },
+ "micro/4b4L/micro_pcmp_2use": {
+  "rtl": 790,
+  "model": 804,
+  "err": 1.7721518987341771
+ },
+ "micro/4b4L/micro_pcmp_br": {
+  "rtl": 1574,
+  "model": 1191,
+  "err": -24.332909783989834
+ },
+ "micro/4b4L/micro_pcmp_fp_int": {
+  "rtl": 576,
+  "model": 550,
+  "err": -4.513888888888889
+ },
+ "micro/4b4L/micro_pcmp_int": {
+  "rtl": 544,
+  "model": 547,
+  "err": 0.5514705882352942
+ },
+ "micro/4b4L/micro_pcmp_int2": {
+  "rtl": 572,
+  "model": 548,
+  "err": -4.195804195804196
+ },
+ "micro/4b4L/micro_pcmp_use": {
+  "rtl": 560,
+  "model": 548,
+  "err": -2.142857142857143
+ },
+ "micro/4b4L/micro_pfma2_same": {
+  "rtl": 557,
+  "model": 547,
+  "err": -1.7953321364452424
+ },
+ "micro/4b4L/micro_pmix": {
+  "rtl": 642,
+  "model": 632,
+  "err": -1.557632398753894
+ },
+ "micro/4b4L/micro_pst_mix": {
+  "rtl": 1284,
+  "model": 1277,
+  "err": -0.5451713395638629
+ },
+ "micro/4b4L/micro_sstride": {
+  "rtl": 1325,
+  "model": 1318,
+  "err": -0.5283018867924528
+ },
+ "micro/4b4L/micro_st2": {
+  "rtl": 1279,
+  "model": 1298,
+  "err": 1.4855355746677092
+ },
+ "micro/4b4L/micro_stld": {
+  "rtl": 1199,
+  "model": 1203,
+  "err": 0.3336113427856547
+ },
+ "micro/4b4L/micro_store": {
+  "rtl": 678,
+  "model": 677,
+  "err": -0.14749262536873156
+ },
+ "micro/4b4L/micro_vpop": {
+  "rtl": 681,
+  "model": 670,
+  "err": -1.6152716593245227
+ },
+ "micro/4b4L/micro_vpop_indep": {
+  "rtl": 657,
+  "model": 670,
+  "err": 1.97869101978691
+ },
+ "micro/4b4L/micro_vpop_pfma": {
+  "rtl": 626,
+  "model": 633,
+  "err": 1.1182108626198084
+ },
+ "micro/4b4L/micro_vpop_pld": {
+  "rtl": 557,
+  "model": 453,
+  "err": -18.671454219030522
+ },
+ "micro/4b4L/micro_vpop_pst": {
+  "rtl": 740,
+  "model": 751,
+  "err": 1.4864864864864864
  },
  "micro/1L/micro_fma2_indep": {
-  "rtl": 2094,
-  "model": 2061,
-  "err": -1.5759312320916905
- },
- "micro/1L/micro_fma2_waw": {
   "rtl": 2067,
   "model": 2061,
   "err": -0.29027576197387517
  },
+ "micro/1L/micro_fma2_waw": {
+  "rtl": 2092,
+  "model": 2061,
+  "err": -1.4818355640535372
+ },
  "micro/1L/micro_ld4st1": {
-  "rtl": 11123,
+  "rtl": 11197,
   "model": 10700,
-  "err": -3.802930863975546
+  "err": -4.438688934536036
  },
  "micro/1L/micro_pcmp": {
-  "rtl": 2093,
+  "rtl": 2066,
   "model": 2058,
-  "err": -1.6722408026755853
+  "err": -0.3872216844143272
  },
  "micro/1L/micro_pcmp_2diff": {
-  "rtl": 3150,
+  "rtl": 3124,
   "model": 3088,
-  "err": -1.9682539682539681
+  "err": -1.1523687580025608
  },
  "micro/1L/micro_pcmp_2use": {
-  "rtl": 3140,
+  "rtl": 3115,
   "model": 3088,
-  "err": -1.6560509554140128
+  "err": -0.8667736757624398
+ },
+ "micro/1L/micro_pcmp_br": {
+  "rtl": 6209,
+  "model": 4325,
+  "err": -30.343050410694154
+ },
+ "micro/1L/micro_pcmp_fp_int": {
+  "rtl": 2112,
+  "model": 2066,
+  "err": -2.178030303030303
+ },
+ "micro/1L/micro_pcmp_int": {
+  "rtl": 2083,
+  "model": 2063,
+  "err": -0.9601536245799328
+ },
+ "micro/1L/micro_pcmp_int2": {
+  "rtl": 2111,
+  "model": 2064,
+  "err": -2.226432970156324
  },
  "micro/1L/micro_pcmp_use": {
-  "rtl": 2071,
+  "rtl": 2096,
   "model": 2064,
-  "err": -0.3380009657170449
+  "err": -1.5267175572519085
  },
  "micro/1L/micro_pfma2_same": {
-  "rtl": 2068,
+  "rtl": 2093,
   "model": 2063,
-  "err": -0.24177949709864605
+  "err": -1.433349259436216
  },
  "micro/1L/micro_pmix": {
-  "rtl": 2158,
+  "rtl": 2185,
   "model": 2148,
-  "err": -0.4633920296570899
+  "err": -1.6933638443935928
+ },
+ "micro/1L/micro_pst_mix": {
+  "rtl": 2396,
+  "model": 2196,
+  "err": -8.347245409015025
  },
  "micro/1L/micro_st2": {
-  "rtl": 4181,
+  "rtl": 4208,
   "model": 4350,
-  "err": 4.04209519253767
+  "err": 3.3745247148288975
  },
  "micro/1L/micro_vpop": {
+  "rtl": 2601,
+  "model": 2570,
+  "err": -1.191849288735102
+ },
+ "micro/1L/micro_vpop_indep": {
   "rtl": 2577,
   "model": 2570,
   "err": -0.2716336825766395
  },
- "micro/1L/micro_vpop_indep": {
-  "rtl": 2603,
-  "model": 2570,
-  "err": -1.2677679600461007
+ "micro/1L/micro_vpop_pfma": {
+  "rtl": 2165,
+  "model": 2149,
+  "err": -0.7390300230946882
+ },
+ "micro/1L/micro_vpop_pld": {
+  "rtl": 1203,
+  "model": 1072,
+  "err": -10.889443059019118
+ },
+ "micro/1L/micro_vpop_pst": {
+  "rtl": 1213,
+  "model": 1202,
+  "err": -0.9068425391591096
  },
  "rodinia/1L/nn": {
   "rtl": 14599,
@@ -801,8 +1271,8 @@
  },
  "rodinia/4L/kmeans_swap": {
   "rtl": 18929,
-  "model": 18155,
-  "err": -4.0889640234560725
+  "model": 18435,
+  "err": -2.609752232024935
  },
  "rodinia/4L/kmeans_c": {
   "rtl": 44538,
@@ -811,13 +1281,13 @@
  },
  "rodinia/4L/pgain": {
   "rtl": 12238,
-  "model": 12131,
-  "err": -0.8743258702402353
+  "model": 12129,
+  "err": -0.8906684098708939
  },
  "rodinia/4L/pathfinder": {
   "rtl": 70886,
-  "model": 66533,
-  "err": -6.140845865191999
+  "model": 66489,
+  "err": -6.2029173602686
  },
  "hcc/4L/hcc_saxpy": {
   "rtl": 1305,

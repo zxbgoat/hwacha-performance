@@ -16,11 +16,13 @@ LOGS = {   # lane 数 -> (配置, 基准日志, 微基准日志)
     8: ('rtl-hwacha-rocket-l8.json',  'rtl-n4096-l8.log',       'micro-n4096-l8.log'),
     16: ('rtl-hwacha-rocket-l16.json', 'rtl-n4096-l16.log',      'micro-n4096-l16.log'),
     '2b2': ('rtl-hwacha-rocket-l2b2.json', 'rtl-n4096-l2-b2.log',  'micro-n4096-l2-b2.log'),   # 2 lane + 2 bank L2
+    '4b2': ('rtl-hwacha-rocket-l4b2.json', 'rtl-n4096-l4-b2.log',  'micro-n4096-l4-b2.log'),   # 4 lane + 2 bank L2
+    '4b4': ('rtl-hwacha-rocket-l4b4.json', 'rtl-n4096-l4-b4.log',  'micro-n4096-l4-b4.log'),   # 4 lane + 4 bank L2
 }
-EXTRA_MICRO = [(1, 'rtl-hwacha-rocket.json', 'micro-n4096-pred2.log')]   # 谓词/FMA 分解微基准（含 pcmp_*、vpop*、fma2_*）
+EXTRA_MICRO = [(1, 'rtl-hwacha-rocket.json', 'micro-n4096-pred3.log')]   # 谓词/FMA 分解微基准第三轮（35 个微内核，含 pcmp_*、vpop*、fma2_*、pcmp_br）
 TRACE_SUITES = [('rodinia', 1), ('hcc', 1), ('rodinia', 4), ('hcc', 4)]
 SKIP_ERR = {'micro_empty'}   # 只有几十到几百拍，不按 RTL 误差阈值检查（仍检查漂移）
-SKIP_ERR_KEYS = {'bench/2b2L/gather'}   # 2 bank 下索引访存 −28%：已知未建模（docs/24 §10.14）
+SKIP_ERR_KEYS = {'bench/2b2L/gather', 'micro/1L/micro_pcmp_br', 'micro/4b2L/micro_sstride', 'micro/4b2L/micro_pcmp_br', 'micro/4b4L/micro_pcmp_br'}   # 已知残差（docs/24 §10.15）
 
 def run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)

@@ -188,6 +188,9 @@ void L2Bank::installLine(Addr addr, bool dirty) {
 }
 
 // 一个 store beat 占用 store 通路的拍数：基础拍数 + 换行/部分写代价 + 并发行数查表（见 mem.hh 中 P 的说明）
+std::deque<std::pair<Addr, int>> L2Bank::_sharedRecentStoreBeats;
+double L2Bank::_sharedLastStoreConcurrency = 1.0;
+
 double L2Bank::storeBeatCost(Addr la, unsigned size, int src) {
     double cost = _p.storeCycles;
     if (la != _lastStoreLine) {
@@ -201,16 +204,18 @@ double L2Bank::storeBeatCost(Addr la, unsigned size, int src) {
     // 按行而不按 (行, 来源) 计：两条 lane 交错写同一行（32 位元素）的 beat 在 L2 里合并成一次读-改-写，RTL 16 lane 单精度
     // 内核显示其代价接近 8 行并发而不是 16 流并发（按 (行, 来源) 计会高估 18%）
     (void)src;
-    double n = _lastStoreConcurrency;
+    auto &recent = _p.storeConflictGlobal ? _sharedRecentStoreBeats : _recentStoreBeats;
+    double &lastN = _p.storeConflictGlobal ? _sharedLastStoreConcurrency : _lastStoreConcurrency;
+    double n = lastN;
     std::set<Addr> between; bool found = false;
-    for (auto it = _recentStoreBeats.rbegin(); it != _recentStoreBeats.rend(); ++it) {
+    for (auto it = recent.rbegin(); it != recent.rend(); ++it) {
         if (it->first == la) { found = true; break; }
         between.insert(it->first);
     }
     if (found) n = (double)between.size() + 1.0;
-    _lastStoreConcurrency = n;
-    _recentStoreBeats.emplace_back(la, src);
-    if (_recentStoreBeats.size() > _p.storeWindow) _recentStoreBeats.pop_front();
+    lastN = n;
+    recent.emplace_back(la, src);
+    if (recent.size() > _p.storeWindow) recent.pop_front();
     const auto &t = _p.storeConflict;
     if (n <= t.front().first) return cost + t.front().second;
     if (n >= t.back().first) return cost + t.back().second;
